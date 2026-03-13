@@ -1,0 +1,121 @@
+{
+  "projectType": "general",
+  "projectName": "Vista",
+  "projectDescription": "A Minecraft mod that adds television screens, viewfinder cameras, and cassette tapes with live video feeds and multi-block displays",
+  "theme": "palm",
+  "primaryColor": "#8B4513",
+  "lightColor": "#D2691E",
+  "darkColor": "#654321",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Blocks",
+            "pages": [
+              "blocks/television",
+              "blocks/viewfinder",
+              "blocks/signal-projector"
+            ]
+          },
+          {
+            "group": "Items",
+            "pages": [
+              "items/cassette-tapes",
+              "items/hollow-cassette"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/multi-block-tvs",
+              "features/broadcast-system",
+              "features/visual-effects"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/setting-up-cameras",
+              "guides/linking-feeds",
+              "guides/creating-cassettes",
+              "guides/configuration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Components",
+            "pages": [
+              "api/blocks",
+              "api/block-entities",
+              "api/items"
+            ]
+          },
+          {
+            "group": "Broadcasting",
+            "pages": [
+              "api/broadcast-manager",
+              "api/location-types",
+              "api/video-sources"
+            ]
+          },
+          {
+            "group": "Rendering",
+            "pages": [
+              "api/renderers",
+              "api/textures",
+              "api/shaders"
+            ]
+          },
+          {
+            "group": "Data",
+            "pages": [
+              "api/cassette-tape-registry",
+              "api/data-components"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-block television screens that can connect to form larger displays",
+    "Viewfinder blocks that function as security cameras with adjustable pitch and yaw",
+    "Cassette tape system with custom video content and GIF support",
+    "Live broadcast system for linking viewfinders to television displays",
+    "CRT visual effects and custom shaders for authentic retro television experience",
+    "Redstone integration with analog output signals",
+    "Compatibility with Fabric and NeoForge mod loaders"
+  ],
+  "publicApiSurface": [
+    "TVBlock - Multi-block connectable television block",
+    "TVBlockEntity - Block entity handling TV display and cassette playback",
+    "ViewFinderBlock - Rotatable camera block with broadcast capabilities",
+    "ViewFinderBlockEntity - Block entity managing camera orientation and feeds",
+    "CassetteItem - Item representing video cassette tapes",
+    "HollowCassetteItem - Item for linking to live camera feeds",
+    "BroadcastManager - System for managing viewfinder connections and video feeds",
+    "BroadcastLocationType - Registry for broadcast location types",
+    "CassetteTape - Data-driven cassette tape definition",
+    "CASSETTE_TAPE_REGISTRY_KEY - Registry key for cassette tapes",
+    "LiveFeedTexture - Texture for rendering live camera feeds",
+    "TvBlockEntityRenderer - Renderer for television screens",
+    "ViewFinderBlockEntityRenderer - Renderer for viewfinder cameras",
+    "VistaLevelRenderer - Custom level renderer for camera views",
+    "LINKED_FEED_COMPONENT - Data component for linked camera feeds",
+    "CASSETTE_TAPE_COMPONENT - Data component for cassette tape data"
+  ]
+}
