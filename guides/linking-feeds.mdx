@@ -1,0 +1,272 @@
+---
+title: Linking Camera Feeds to TVs
+description: Connect viewfinder cameras to televisions using hollow cassettes
+---
+
+Vista uses a cassette-based system to link cameras to TVs, creating a flexible and intuitive broadcast network.
+
+## Understanding the Link System
+
+The broadcast system uses a global manager (`BroadcastManager.java`) that maintains connections between:
+
+- **Viewfinders**: Broadcast sources identified by UUID
+- **TVs**: Display devices that play cassettes
+- **Hollow Cassettes**: The linking medium that stores feed IDs
+
+## Creating a Hollow Cassette
+
+Hollow cassettes are special items that can be programmed to receive a specific camera feed.
+
+<Steps>
+  <Step title="Craft a Hollow Cassette">
+    Use the crafting recipe for hollow cassettes (check your recipe book in-game). Hollow cassettes are distinct from regular content cassettes.
+  </Step>
+  
+  <Step title="Verify the Item">
+    Hollow cassettes appear as cassette items without pre-recorded content. They're ready to be linked to a viewfinder.
+  </Step>
+</Steps>
+
+## Linking a Camera to a Cassette
+
+This process "programs" the hollow cassette with a specific viewfinder's feed.
+
+<Steps>
+  <Step title="Hold the Hollow Cassette">
+    Place the hollow cassette in your hand (either main or off-hand).
+  </Step>
+  
+  <Step title="Right-Click the Viewfinder">
+    Use the cassette on the viewfinder block you want to link. The cassette will store the viewfinder's UUID.
+  </Step>
+  
+  <Step title="Confirm the Link">
+    The hollow cassette will now have an enchanted glint effect, indicating it's linked to a feed. Hover over it to see connection details.
+  </Step>
+</Steps>
+
+<Note>
+  The link is stored in the cassette's component data (`VistaMod.LINKED_FEED_COMPONENT`), so you can create multiple cassettes linked to the same camera or different cameras.
+</Note>
+
+## Playing the Feed on a TV
+
+Now that your cassette is linked, you can play the live feed on any TV.
+
+<Steps>
+  <Step title="Place a Television">
+    Craft and place a TV block where you want to view the feed.
+  </Step>
+  
+  <Step title="Power the TV">
+    TVs require power to function. Apply a redstone signal to turn it on:
+    - Lever
+    - Redstone torch
+    - Button (for temporary viewing)
+    - Pressure plate
+  </Step>
+  
+  <Step title="Insert the Cassette">
+    Right-click the TV with your linked hollow cassette. The cassette will be inserted into the TV.
+  </Step>
+  
+  <Step title="Watch the Feed">
+    The TV screen will display the live feed from your viewfinder camera. The feed updates in real-time!
+  </Step>
+</Steps>
+
+### Removing a Cassette
+
+To eject a cassette from a TV:
+
+- Right-click the TV with an empty hand while the TV is off, or
+- Break the TV (it will drop the cassette as an item)
+
+<Warning>
+  If you break a TV, it will drop the cassette, but the TV itself will also be destroyed. Always eject cassettes properly when possible.
+</Warning>
+
+## Cassette Tooltip Information
+
+Linked hollow cassettes provide detailed tooltip information when you hover over them:
+
+### When Feed is Found
+
+If the viewfinder exists and is in a loaded area:
+
+```
+Linked to: [Position]
+Dimension: [Dimension Name]
+```
+
+### When Feed is Unknown
+
+If the viewfinder is unloaded or in another dimension:
+
+```
+Linked to: Unknown Location
+```
+
+### When Feed is in Another Dimension
+
+If the camera is in a different dimension:
+
+```
+Linked to: [Away] [Dimension]
+```
+
+<Note>
+  Tooltip information is client-side only and requires the `BroadcastManager` to be synced. You may see "Unknown Location" until the area loads.
+</Note>
+
+## Multiple TV Setup
+
+You can create sophisticated monitoring systems with multiple TVs and cameras.
+
+### Multi-Screen Security Room
+
+<Steps>
+  <Step title="Set Up Multiple Cameras">
+    Place viewfinders at different locations (base entrance, mob farm, storage room, etc.).
+  </Step>
+  
+  <Step title="Create Cassettes for Each">
+    Link a hollow cassette to each viewfinder.
+  </Step>
+  
+  <Step title="Label Your Cassettes">
+    Use an anvil to rename cassettes: "Front Door Cam", "Farm Monitor", etc.
+  </Step>
+  
+  <Step title="Build Your Control Room">
+    Place multiple TVs in a room, each displaying a different feed.
+  </Step>
+</Steps>
+
+### Connected TV Displays
+
+TVs can connect to form larger displays:
+
+- Place TVs adjacent to each other horizontally
+- They will automatically detect neighboring TVs
+- Maximum size: Configurable (default 8 blocks)
+- The connection is stored in `TVBlockEntity.connectedTvsAmount`
+
+<Note>
+  The maximum connected TV size is controlled by the `max_connected_tv_size` config option. See [Configuration](/guides/configuration) for details.
+</Note>
+
+## Pausing and Controlling Playback
+
+### Pausing a Live Feed
+
+You can pause (freeze) the display on a TV:
+
+<Steps>
+  <Step title="Ensure TV is Powered">
+    The TV must be on (receiving power).
+  </Step>
+  
+  <Step title="Sneak + Right-Click">
+    Hold shift and right-click the TV with an empty hand.
+  </Step>
+  
+  <Step title="Toggle Pause">
+    The feed will freeze. Repeat to unpause.
+  </Step>
+</Steps>
+
+<Note>
+  Pausing a feed freezes the display but doesn't stop the viewfinder from capturing. It's purely a client-side visual effect.
+</Note>
+
+## Troubleshooting Connection Issues
+
+### TV Shows Nothing
+
+**Check these common issues:**
+
+1. **TV Power**: Ensure the TV is receiving a redstone signal
+2. **Cassette Inserted**: Verify a cassette is in the TV
+3. **Valid Link**: Check that the cassette has the enchanted glint (linked)
+4. **Chunk Loading**: The viewfinder must be in a loaded chunk
+5. **Same Dimension**: Camera and TV must be in the same dimension
+
+### "Unknown Location" Tooltip
+
+**Possible causes:**
+
+- Viewfinder was destroyed or removed
+- Camera is in an unloaded chunk
+- Camera is in a different dimension
+- World data hasn't synced yet (try relogging)
+
+### Feed Becomes Invalid
+
+The `BroadcastManager` automatically unlinks feeds when it detects an invalid broadcast source:
+
+```java
+// From BroadcastManager.java:172-177
+if (!result.isValid()) {
+    if (!clientSide) {
+        unlinkFeed(feedId);
+    }
+    return null;
+}
+```
+
+If your viewfinder is destroyed, you'll need to:
+
+1. Place a new viewfinder
+2. Create a new hollow cassette
+3. Link it to the new viewfinder
+
+### Multiple Feeds Conflict
+
+Each viewfinder can only broadcast to one feed ID at a time. The system uses a `HashBiMap` to ensure:
+
+- Each UUID maps to exactly one location
+- Each location maps to exactly one UUID
+
+If you try to link a new cassette to a viewfinder, it will update the existing broadcast entry.
+
+## Comparator Output
+
+Hollow cassettes with linked feeds output a comparator signal of **15** when placed in a TV or other compatible block:
+
+```java
+// From HollowCassetteItem.java:71-73
+public int getAnalogSignalStrength(ItemStack stack) {
+    return 15;
+}
+```
+
+This can be used for:
+
+- Detecting when a feed is active
+- Creating automated monitoring systems
+- Redstone integration with security setups
+
+## Advanced Features
+
+### Enderman Detection
+
+TVs have special behavior when displaying feeds that contain endermen:
+
+- The TV monitors for enderman observation
+- Creates unique visual effects
+- Stored in `TVBlockEntity.observationController`
+
+This adds an immersive element where looking at an enderman through a TV screen can still trigger their aggro mechanics.
+
+### Sound Playback
+
+While hollow cassettes play live video feeds, they don't transmit audio. However, TVs support sound playback for content cassettes (see [Creating Cassettes](/guides/creating-cassettes)).
+
+## Best Practices
+
+1. **Label Everything**: Use anvils to name cassettes and identify cameras
+2. **Keep Cameras Loaded**: Use chunk loaders for critical security feeds
+3. **Test Connections**: After linking, test the feed before finalizing your setup
+4. **Backup Cassettes**: Create duplicate cassettes for important camera feeds
+5. **Organize Cables**: Use decorative blocks to create "cable runs" for aesthetics

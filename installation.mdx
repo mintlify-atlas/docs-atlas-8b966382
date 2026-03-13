@@ -1,0 +1,101 @@
+---
+title: Installation
+description: How to install Vista for Minecraft 1.21.1 and 1.21.2
+---
+
+Vista is available for both Fabric and NeoForge mod loaders on Minecraft 1.21.1 and 1.21.2.
+
+## Requirements
+
+### For All Loaders
+
+- **Minecraft**: Version 1.21.1 or 1.21.2
+- **Moonlight Lib**: Required dependency (version 1.21-2.29.17 or higher)
+
+### Fabric Additional Requirements
+
+- **Fabric Loader**: Version 0.16.3 or higher
+- **Fabric API**: Version 0.116.9+1.21.1 or higher
+
+### NeoForge Requirements
+
+- **NeoForge**: Version 21.1.219 or higher
+
+## Installation Steps
+
+<Steps>
+  <Step title="Install the mod loader">
+    Download and install either [Fabric](https://fabricmc.net/) or [NeoForge](https://neoforged.net/) for Minecraft 1.21.1 or 1.21.2.
+  </Step>
+
+  <Step title="Download dependencies">
+    Download **Moonlight Lib** from [CurseForge](https://www.curseforge.com/minecraft/mc-mods/selene) or [Modrinth](https://modrinth.com/mod/moonlight).
+
+    <Note>
+      If you're using Fabric, you also need to download **Fabric API** from [CurseForge](https://www.curseforge.com/minecraft/mc-mods/fabric-api) or [Modrinth](https://modrinth.com/mod/fabric-api).
+    </Note>
+  </Step>
+
+  <Step title="Download Vista">
+    Download Vista from one of these sources:
+
+    - [CurseForge](https://www.curseforge.com/minecraft/mc-mods/vista-tv) (Project ID: 1368607)
+    - [Modrinth](https://modrinth.com/mod/vista_tv) (Project ID: vista_tv)
+
+    Make sure to download the correct version for your mod loader (Fabric or NeoForge).
+  </Step>
+
+  <Step title="Install the mods">
+    Place the downloaded `.jar` files into your Minecraft `mods` folder:
+
+    <CodeGroup>
+    ```bash Windows
+    %appdata%\.minecraft\mods
+    ```
+
+    ```bash macOS
+    ~/Library/Application Support/minecraft/mods
+    ```
+
+    ```bash Linux
+    ~/.minecraft/mods
+    ```
+    </CodeGroup>
+
+    You should have the following files in your mods folder:
+    - `vista-[version]-[loader].jar`
+    - `moonlight-[version].jar`
+    - `fabric-api-[version].jar` (Fabric only)
+  </Step>
+
+  <Step title="Launch Minecraft">
+    Start Minecraft with your chosen mod loader profile. Vista will load automatically.
+  </Step>
+</Steps>
+
+## Verification
+
+To verify Vista is installed correctly:
+
+1. Launch Minecraft and load a world
+2. Open the creative inventory and search for "television" or "vista"
+3. You should see the Television block and related items
+
+<Warning>
+  If you encounter issues, check that:
+  - All dependencies are installed
+  - You're using compatible versions of Minecraft (1.21.1 or 1.21.2)
+  - The mod files are in the correct `mods` folder
+</Warning>
+
+## Configuration
+
+Vista includes several configuration options in the `config/vista-common.toml` file:
+
+- `max_connected_tv_size`: Maximum size of connected multi-block TVs (default: 8, range: 1-32)
+- `creeper_drop`: Whether creepers drop cassette tapes when killed by pillagers (default: true)
+- `chest_drop`: Whether loot chests can contain cassette tapes (default: true)
+
+## Next Steps
+
+Now that Vista is installed, check out the [Quickstart Guide](/quickstart) to learn how to create your first TV setup!

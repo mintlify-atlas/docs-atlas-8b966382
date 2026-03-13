@@ -1,0 +1,330 @@
+---
+title: Signal Projector
+description: A block that streams video from external URLs for display on TVs
+---
+
+The **Signal Projector** is a block entity that fetches and broadcasts video content from external URLs. It acts as a video source for the Vista mod's broadcast system.
+
+## Overview
+
+Signal Projectors allow you to display custom video content on TVs by providing a URL. They integrate with the broadcast system and can be linked to hollow cassettes for remote viewing.
+
+<Warning>
+  Signal Projectors require operator permissions or ComputerCraft to configure by default.
+</Warning>
+
+## Block Properties
+
+The Signal Projector is a simple `BaseEntityBlock` with no blockstate properties:
+
+```java
+// From SignalProjectorBlock.java:22-28
+public class SignalProjectorBlock extends BaseEntityBlock {
+    public static final MapCodec<SignalProjectorBlock> CODEC = simpleCodec(SignalProjectorBlock::new);
+    
+    public SignalProjectorBlock(Properties properties) {
+        super(properties);
+    }
+}
+```
+
+It doesn't have facing, rotation, or power states—it's a purely functional block.
+
+## Block Entity Data
+
+The Signal Projector stores minimal data:
+
+<ParamField path="UUID" type="UUID">
+  Unique identifier for linking to hollow cassettes
+</ParamField>
+
+<ParamField path="url" type="String">
+  The URL of the video source to stream
+</ParamField>
+
+```java
+// From SignalProjectorBlockEntity.java:30-32
+private String url = "";
+private UUID myUUID;
+private IVideoSource videoSource = IVideoSource.EMPTY;
+```
+
+## Placement
+
+Place the Signal Projector like any standard block:
+
+1. Select the Signal Projector item
+2. Right-click on a block to place it
+3. No special orientation or configuration needed during placement
+
+## Configuration
+
+### Opening the GUI
+
+Right-click the Signal Projector to open its configuration screen:
+
+```java
+// From SignalProjectorBlock.java:51-59
+protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, 
+                                         Player player, InteractionHand hand, BlockHitResult hitResult) {
+    if (level.getBlockEntity(pos) instanceof SignalProjectorBlockEntity tile && tile.canBeEditedBy(player)) {
+        if (player instanceof ServerPlayer serverPlayer) {
+            Utils.openGuiIfPossible(tile, serverPlayer, stack, hitResult.getDirection(), hitResult.getLocation());
+        }
+        return ItemInteractionResult.sidedSuccess(level.isClientSide);
+    }
+    return super.useItemOn(stack, state, level, pos, player, hand, hitResult);
+}
+```
+
+### Permissions
+
+Only certain players can configure the projector:
+
+```java
+// From SignalProjectorBlockEntity.java:95-97
+public boolean canBeEditedBy(Player player) {
+    return CompatHandler.COMPUTER_CRAFT || player.canUseGameMasterBlocks();
+}
+```
+
+<Tabs>
+  <Tab title="Operator Permission">
+    Players with operator status (`canUseGameMasterBlocks()`) can configure the projector.
+    
+    - In singleplayer: Open to LAN with cheats enabled, then `/op <username>`
+    - In multiplayer: Server operators can configure projectors
+  </Tab>
+  
+  <Tab title="ComputerCraft Integration">
+    If ComputerCraft is installed, **all players** can configure projectors.
+    
+    This allows for community-driven content in survival mode.
+  </Tab>
+</Tabs>
+
+### Setting the URL
+
+1. Open the Signal Projector GUI (requires permissions)
+2. Enter a video URL in the text field
+3. Close the GUI to save
+
+```java
+// From SignalProjectorBlockEntity.java:87-93
+public String getUrl() {
+    return url;
+}
+
+public void setUrl(String url) {
+    this.url = url;
+}
+```
+
+The URL is validated and fetched by the video source system.
+
+## Broadcasting
+
+The Signal Projector implements `IBroadcastSource`:
+
+```java
+// From SignalProjectorBlockEntity.java:39-42
+public @Nullable IVideoSource getBroadcastVideo() {
+    return videoSource;
+}
+```
+
+### Linking to TVs
+
+1. Configure the Signal Projector with a video URL
+2. Right-click with a hollow cassette to link it
+3. Place the linked cassette in a TV
+4. The TV displays the streamed video content
+
+<Note>
+  The video source is created from the URL when the projector is loaded or updated.
+</Note>
+
+## Data Persistence
+
+Signal Projector data is saved to NBT:
+
+```java
+// From SignalProjectorBlockEntity.java:75-80
+protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
+    super.saveAdditional(tag, registries);
+    tag.putUUID("UUID", myUUID);
+    tag.putString("url", url);
+}
+```
+
+And loaded on chunk load:
+
+```java
+// From SignalProjectorBlockEntity.java:66-73
+protected void loadAdditional(CompoundTag tag, HolderLookup.Provider registries) {
+    super.loadAdditional(tag, registries);
+    this.myUUID = tag.getUUID("UUID");
+    this.url = tag.getString("url");
+    if (level != null) this.ensureLinked(level, LevelBELocation.of(this));
+}
+```
+
+## Broadcasting System
+
+The Signal Projector registers with the broadcast manager:
+
+```java
+// From SignalProjectorBlockEntity.java:60-63
+public void setLevel(Level level) {
+    super.setLevel(level);
+    this.ensureLinked(level, LevelBELocation.of(this));
+}
+```
+
+When removed, it unlinks:
+
+```java
+// From SignalProjectorBlock.java:41-47
+protected void onRemove(BlockState oldState, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
+    super.onRemove(oldState, level, pos, newState, movedByPiston);
+    if (oldState.getBlock() == this && newState.getBlock() != this &&
+            level instanceof ServerLevel sl) {
+        BroadcastManager.getInstance(sl).unlinkFeed(LevelBELocation.of(level,pos));
+    }
+}
+```
+
+This ensures clean management of broadcast sources.
+
+## Network Synchronization
+
+The Signal Projector syncs data to clients:
+
+```java
+// From SignalProjectorBlockEntity.java:50-57
+public CompoundTag getUpdateTag(HolderLookup.Provider registries) {
+    return this.saveWithoutMetadata(registries);
+}
+
+public @Nullable Packet<ClientGamePacketListener> getUpdatePacket() {
+    return ClientboundBlockEntityDataPacket.create(this);
+}
+```
+
+This ensures all players see the correct video content.
+
+## ComputerCraft Integration
+
+When ComputerCraft is installed, the Signal Projector exposes a peripheral:
+
+```java
+// From SignalProjectorBlockEntity.java:28
+public Object ccPeripheral;
+```
+
+### Peripheral API (Lua)
+
+You can control the Signal Projector programmatically:
+
+```lua
+local projector = peripheral.wrap("top")
+
+-- Set the video URL
+projector.setUrl("https://example.com/video.mp4")
+
+-- Get the current URL
+local currentUrl = projector.getUrl()
+print("Broadcasting: " .. currentUrl)
+
+-- Get the projector's UUID
+local uuid = projector.getUUID()
+```
+
+<Note>
+  This allows for automated content management, scheduled broadcasting, and integration with other ComputerCraft systems.
+</Note>
+
+## Client-Side Rendering
+
+The Signal Projector uses the screen provider interface:
+
+```java
+// From SignalProjectorBlockEntity.java:45-47
+public void openScreen(Level level, Player player, Direction direction, Vec3 pos) {
+    SignalProjectorScreen.open(this);
+}
+```
+
+This opens the configuration GUI on the client side.
+
+## Use Cases
+
+<Tabs>
+  <Tab title="Community TV Station">
+    Set up a Signal Projector in a public area to broadcast community content:
+    
+    1. Build a TV wall with multiple connected TVs
+    2. Place a Signal Projector nearby
+    3. Link a hollow cassette to the projector
+    4. Insert the cassette into the TV
+    5. Configure the URL (requires op/CC)
+    6. Players can watch the broadcast
+  </Tab>
+  
+  <Tab title="Educational Displays">
+    Use Signal Projectors for educational or informational content:
+    
+    - Museum exhibits with video explanations
+    - Tutorial stations showing how-to videos
+    - News broadcasts in roleplay servers
+  </Tab>
+  
+  <Tab title="Automated Broadcasting">
+    With ComputerCraft, create automated broadcast schedules:
+    
+    ```lua
+    local projector = peripheral.wrap("back")
+    local schedule = {
+        ["morning"] = "https://example.com/morning.mp4",
+        ["afternoon"] = "https://example.com/afternoon.mp4",
+        ["night"] = "https://example.com/night.mp4"
+    }
+    
+    while true do
+        local time = os.time()
+        if time < 6000 then
+            projector.setUrl(schedule["morning"])
+        elseif time < 12000 then
+            projector.setUrl(schedule["afternoon"])
+        else
+            projector.setUrl(schedule["night"])
+        end
+        os.sleep(60)
+    end
+    ```
+  </Tab>
+</Tabs>
+
+## Security Considerations
+
+<Warning>
+  Signal Projectors fetch content from external URLs. Be cautious about:
+  
+  - **Bandwidth**: Streaming video can consume significant bandwidth
+  - **Content**: Ensure URLs point to appropriate content
+  - **Permissions**: Restrict who can configure projectors on servers
+  
+  Consider using the operator-only permission in multiplayer environments.
+</Warning>
+
+## Comparison with Other Sources
+
+| Feature | Signal Projector | Viewfinder | Cassette |
+|---------|------------------|------------|----------|
+| **Content Type** | External URL | Live camera feed | Pre-recorded |
+| **Configuration** | URL input | Rotation/zoom | Fixed content |
+| **Permissions** | Op/CC required | Anyone | Anyone |
+| **Broadcasting** | Yes | Yes | Direct insertion |
+| **Use Case** | Custom content | Surveillance | Music/videos |
+
+Signal Projectors are best for custom, external content that can be updated without changing game files.

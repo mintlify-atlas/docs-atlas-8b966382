@@ -1,0 +1,364 @@
+---
+title: Configuration
+description: Configure Vista mod settings for both Fabric and NeoForge
+---
+
+Vista provides several configuration options to customize mod behavior. Configuration files are automatically generated when you first run the game with Vista installed.
+
+## Config File Locations
+
+Configuration files are stored in different locations depending on your mod loader:
+
+<CodeGroup>
+
+```text Fabric
+config/vista-common.toml
+config/vista-client.toml
+```
+
+```text NeoForge  
+serverconfig/vista-common.toml
+config/vista-client.toml
+```
+
+</CodeGroup>
+
+<Note>
+  On Fabric, all configs are in the `config` folder. On NeoForge, server-synced configs (common) are in `serverconfig`, while client configs remain in `config`.
+</Note>
+
+## Common (Server) Configuration
+
+These settings are synchronized from the server to all connected clients. Changes require a server restart or `/reload` to take effect.
+
+### max_connected_tv_size
+
+**Type:** Integer  
+**Default:** `8`  
+**Range:** `1` to `32`
+
+Maximum size of connected TVs in blocks. TVs placed adjacent to each other horizontally will connect to form a larger display.
+
+```toml
+[general]
+  max_connected_tv_size = 8
+```
+
+**Examples:**
+
+- `max_connected_tv_size = 1`: Disables multi-block TVs (each TV is independent)
+- `max_connected_tv_size = 4`: TVs can connect up to 4 blocks wide
+- `max_connected_tv_size = 16`: Allows massive 16-block-wide displays
+
+<Warning>
+  Very large connected TV arrays can impact client performance when rendering. Consider limiting this value on servers with many players.
+</Warning>
+
+**Use Cases:**
+
+- Set to `1` for performance-critical servers
+- Increase for cinema or theater builds
+- Default `8` provides a good balance for most uses
+
+### creeper_drop
+
+**Type:** Boolean  
+**Default:** `true`
+
+ Whether creepers should drop cassette tapes when killed by pillagers (crossbow kill).
+
+```toml
+[general]
+  creeper_drop = true
+```
+
+When enabled, creepers killed by pillager crossbows have a chance to drop random cassette tapes, similar to how music discs work with skeleton kills.
+
+**Why disable this?**
+
+- You want cassettes to be rare/uncraftable only
+- Your server has a custom loot table system
+- You're running a datapack that conflicts with mob drops
+- You find the mechanic doesn't fit your gameplay
+
+<Note>
+  This mechanic adds a vanilla-like way to obtain cassette tapes through gameplay. Disable it if you want tapes to be found only in loot chests or through creative mode.
+</Note>
+
+### chest_drop
+
+**Type:** Boolean  
+**Default:** `true`
+
+Whether loot chests can contain cassette tapes.
+
+```toml
+[general]
+  chest_drop = true
+```
+
+When enabled, cassette tapes can appear as loot in various chest types throughout the world (dungeons, temples, etc.).
+
+**Affected loot tables:**
+
+- Dungeon chests
+- Mineshaft chests  
+- Stronghold library chests
+- Woodland mansion chests
+- Other mod-added chest loot tables
+
+**Why disable this?**
+
+- You want cassettes to be exclusively craftable
+- Custom loot table configuration via datapacks
+- Balancing for specific server gameplay
+- Keeping cassettes as end-game items
+
+## Client Configuration
+
+Client-side settings that only affect local rendering and behavior. Each player can customize these independently.
+
+<Note>
+  Client configuration options are currently minimal. Most Vista settings are server-side to ensure consistent behavior across multiplayer.
+</Note>
+
+### Future Client Options
+
+The Vista mod architecture supports client-side configuration through the `ClientConfigs.java` file. Future versions may include:
+
+- Video quality/performance settings
+- Audio volume controls for cassette playback
+- TV screen rendering options
+- Camera HUD customization
+
+## Editing Configuration Files
+
+Configuration files use the TOML format, which is human-readable and easy to edit.
+
+<Steps>
+  <Step title="Locate the Config File">
+    Navigate to your Minecraft instance directory:
+    - **Fabric**: `config/vista-common.toml`
+    - **NeoForge**: `serverconfig/vista-common.toml` (for servers) or `config/vista-common.toml` (for clients)
+  </Step>
+  
+  <Step title="Open in Text Editor">
+    Use any text editor (Notepad++, VS Code, Sublime Text, or even basic Notepad).
+  </Step>
+  
+  <Step title="Modify Values">
+    Change the values according to your preferences:
+    
+    ```toml
+    [general]
+      max_connected_tv_size = 16
+      creeper_drop = false
+      chest_drop = true
+    ```
+  </Step>
+  
+  <Step title="Save and Reload">
+    - Save the file
+    - Restart your Minecraft client/server, or run `/reload` in-game
+  </Step>
+</Steps>
+
+<Warning>
+  Always backup your config files before making changes. Invalid TOML syntax can prevent the game from loading the configuration.
+</Warning>
+
+## Server vs Client Configs
+
+### Common (Server-Synced) Configs
+
+**Defined in:** `CommonConfigs.java`  
+**Config Type:** `COMMON_SYNCED`
+
+- Synchronized from server to clients automatically
+- Changes affect all players on the server
+- Server operators control these settings
+- Located in `serverconfig/` on NeoForge
+
+**Why synced?**
+
+Settings like `max_connected_tv_size` must be consistent across all clients to prevent desync issues. If one client thinks TVs can connect up to 16 blocks but the server limits it to 8, the client would render incorrectly.
+
+### Client-Only Configs
+
+**Defined in:** `ClientConfigs.java`  
+**Config Type:** `CLIENT`
+
+- Not synchronized
+- Each player can have different values
+- Only affect local rendering and behavior
+- Located in `config/` folder
+
+**Examples of client settings:**
+
+- Rendering optimizations
+- Audio preferences  
+- UI customizations
+- Debug options
+
+## Configuration Examples
+
+### Performance-Focused Server
+
+Optimize for servers with many players:
+
+```toml
+[general]
+  max_connected_tv_size = 4
+  creeper_drop = false
+  chest_drop = false
+```
+
+**Rationale:**
+
+- Smaller TV arrays reduce render load
+- Disable random drops to prevent item overflow
+- Control cassette distribution manually
+
+### Cinema/Theater Build
+
+Maximize display capabilities:
+
+```toml
+[general]
+  max_connected_tv_size = 32
+  creeper_drop = true
+  chest_drop = true
+```
+
+**Rationale:**
+
+- Allow massive connected displays for movie screens
+- Enable all methods of obtaining cassettes for content variety
+
+### Survival Difficulty
+
+Make cassettes rare and valuable:
+
+```toml
+[general]
+  max_connected_tv_size = 8
+  creeper_drop = true
+  chest_drop = false
+```
+
+**Rationale:**
+
+- Standard TV size for normal gameplay
+- Only obtainable through dangerous creeper farming
+- Not available in early-game chest loot
+
+## Default Configuration
+
+Here's the complete default configuration when Vista is first installed:
+
+```toml
+[general]
+  # Maximum size of connected TVs (in blocks). Set to 1 to disable multi-block TVs.
+  # Range: 1 to 32
+  max_connected_tv_size = 8
+  
+  # Whether creepers should drop tapes when killed by the pillagers.
+  creeper_drop = true
+  
+  # Whether loot chests could contain cassette tapes.
+  chest_drop = true
+```
+
+## Troubleshooting Configuration
+
+### Config Changes Not Taking Effect
+
+<Steps>
+  <Step title="Verify File Location">
+    Ensure you're editing the correct file:
+    - **Fabric**: `config/vista-common.toml`
+    - **NeoForge Server**: `serverconfig/vista-common.toml`
+    - **NeoForge Client**: `config/vista-common.toml`
+  </Step>
+  
+  <Step title="Check Syntax">
+    Validate your TOML syntax. Common mistakes:
+    - Missing quotes around strings
+    - Incorrect section headers `[general]`
+    - Typos in setting names
+  </Step>
+  
+  <Step title="Reload Properly">
+    - Single player: Fully restart Minecraft
+    - Multiplayer: Restart the server or use `/reload`
+    - Client settings: Only require game restart
+  </Step>
+  
+  <Step title="Check Logs">
+    Look for config-related errors in `logs/latest.log`:
+    ```
+    [Vista] Failed to load config: ...
+    ```
+  </Step>
+</Steps>
+
+### Config File Missing
+
+If your config file is missing:
+
+1. **Delete and regenerate**: Remove any corrupted config files and restart the game. Vista will create new default configs.
+2. **Check permissions**: Ensure Minecraft has write access to the config folder.
+3. **Verify mod installation**: Confirm Vista is properly installed and loading.
+
+### Values Outside Range
+
+If you set a value outside its allowed range:
+
+```toml
+max_connected_tv_size = 100  # Invalid: max is 32
+```
+
+Vista will automatically clamp the value to the valid range:
+
+- Values below minimum → set to minimum (1)
+- Values above maximum → set to maximum (32)
+
+Check your logs for warnings about clamped values.
+
+## Config API for Developers
+
+If you're developing addons or integrations with Vista:
+
+### Accessing Config Values
+
+```java
+import net.mehvahdjukaar.vista.configs.CommonConfigs;
+
+// Get max TV size
+int maxSize = CommonConfigs.MAX_CONNECTED_TV_SIZE.get();
+
+// Check if creepers drop cassettes
+boolean creeperDrops = CommonConfigs.CREEPER_DROP.get();
+
+// Check if chests contain cassettes
+boolean chestDrops = CommonConfigs.CHEST_DROP.get();
+```
+
+### Config Types
+
+Vista uses Moonlight Lib's config system:
+
+- **ConfigType.COMMON_SYNCED**: Server → Client synchronization
+- **ConfigType.CLIENT**: Client-only settings
+
+All common configs are defined in `CommonConfigs.java:21`:
+
+```java
+ConfigBuilder builder = ConfigBuilder.create(VistaMod.MOD_ID, ConfigType.COMMON_SYNCED);
+```
+
+## See Also
+
+- [Setting Up Cameras](/guides/setting-up-cameras) - Uses the camera system affected by configs
+- [Linking Feeds](/guides/linking-feeds) - TV connection behavior
+- [Creating Cassettes](/guides/creating-cassettes) - Loot table integration with `chest_drop`

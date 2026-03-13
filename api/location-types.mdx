@@ -1,0 +1,330 @@
+---
+title: Broadcast Location Types
+description: API reference for BroadcastLocationType and location implementations
+---
+
+## Overview
+
+The broadcast location system provides an extensible way to define where broadcast sources are located in the world. This allows broadcasts to reference block entities, entities, or custom locations.
+
+**Package:** `net.mehvahdjukaar.vista.common.broadcast`
+
+## BroadcastLocationType
+
+`BroadcastLocationType` is a record that defines how a location type is serialized and deserialized.
+
+```java
+public record BroadcastLocationType(
+    MapCodec<? extends IBroadcastLocation> codec,
+    StreamCodec<ByteBuf, ? extends IBroadcastLocation> streamCodec
+)
+```
+
+<ParamField path="codec" type="MapCodec<? extends IBroadcastLocation>" required>
+  Codec for disk serialization and data components
+</ParamField>
+
+<ParamField path="streamCodec" type="StreamCodec<ByteBuf, ? extends IBroadcastLocation>" required>
+  Stream codec for network packet serialization
+</ParamField>
+
+## IBroadcastLocation Interface
+
+All broadcast locations must implement this interface.
+
+```java
+public interface IBroadcastLocation {
+    TriResult<IBroadcastSource> get(boolean isClient);
+    BroadcastLocationType type();
+    MutableComponent getTooltipComponent(Level level);
+}
+```
+
+### Methods
+
+#### get
+
+```java
+TriResult<IBroadcastSource> get(boolean isClient)
+```
+
+Retrieves the broadcast source at this location. Returns a `TriResult` which can be:
+- **Valid with value**: The broadcast source exists and is valid
+- **Valid but empty**: The location is valid but temporarily unavailable (e.g., chunk not loaded)
+- **Invalid**: The broadcast source no longer exists at this location
+
+<ParamField path="isClient" type="boolean" required>
+  `true` if called on client side, `false` for server side
+</ParamField>
+
+<ResponseField name="return" type="TriResult<IBroadcastSource>">
+  A tri-state result containing the broadcast source
+</ResponseField>
+
+#### type
+
+```java
+BroadcastLocationType type()
+```
+
+Returns the type of this location for serialization.
+
+<ResponseField name="return" type="BroadcastLocationType">
+  The location type descriptor
+</ResponseField>
+
+#### getTooltipComponent
+
+```java
+MutableComponent getTooltipComponent(Level level)
+```
+
+Generates a tooltip component for displaying this location to users.
+
+<ParamField path="level" type="Level" required>
+  The current level for contextual information
+</ParamField>
+
+<ResponseField name="return" type="MutableComponent">
+  A text component describing this location
+</ResponseField>
+
+## LevelBELocation
+
+The built-in implementation for block entity locations.
+
+```java
+public record LevelBELocation(GlobalPos globalPos) implements IBroadcastLocation
+```
+
+### Constructor Methods
+
+#### of (Level, BlockPos)
+
+```java
+public static LevelBELocation of(Level level, BlockPos pos)
+```
+
+Creates a location from a level and block position.
+
+<ParamField path="level" type="Level" required>
+  The world level
+</ParamField>
+
+<ParamField path="pos" type="BlockPos" required>
+  The block position
+</ParamField>
+
+<ResponseField name="return" type="LevelBELocation">
+  A new location instance
+</ResponseField>
+
+**Example:**
+
+```java
+LevelBELocation location = LevelBELocation.of(level, new BlockPos(100, 64, 200));
+```
+
+#### of (BlockEntity)
+
+```java
+public static LevelBELocation of(BlockEntity be)
+```
+
+Creates a location directly from a block entity.
+
+<ParamField path="be" type="BlockEntity" required>
+  The block entity to reference
+</ParamField>
+
+<ResponseField name="return" type="LevelBELocation">
+  A new location instance
+</ResponseField>
+
+**Example:**
+
+```java
+LevelBELocation location = LevelBELocation.of(viewFinderBlockEntity);
+```
+
+### Type Definition
+
+```java
+public static final BroadcastLocationType TYPE = new BroadcastLocationType(
+    GlobalPos.MAP_CODEC.xmap(LevelBELocation::new, LevelBELocation::globalPos),
+    GlobalPos.STREAM_CODEC.map(LevelBELocation::new, LevelBELocation::globalPos)
+);
+```
+
+The `TYPE` field must be registered to the `BROADCAST_LOCATION_REGISTRY` during mod initialization.
+
+### Implementation Details
+
+#### get Implementation
+
+```java
+@Override
+public TriResult<IBroadcastSource> get(boolean isClient) {
+    Level otherLevel = isClient
+            ? VistaModClient.getLocalLevelByDimension(globalPos.dimension())
+            : PlatHelper.getCurrentServer().getLevel(globalPos.dimension());
+
+    if (otherLevel != null && otherLevel.isLoaded(globalPos.pos())) {
+        if (otherLevel.getBlockEntity(globalPos.pos()) instanceof IBroadcastSource provider) {
+            return TriResult.valid(provider);
+        } else if (!isClient) {
+            return TriResult.invalid();
+        }
+    }
+    return TriResult.empty();
+}
+```
+
+This implementation:
+1. Gets the appropriate level (client or server)
+2. Checks if the position is loaded
+3. Returns `valid` if the block entity is an `IBroadcastSource`
+4. Returns `invalid` on server if the block entity is wrong type
+5. Returns `empty` if the chunk isn't loaded
+
+#### getTooltipComponent Implementation
+
+```java
+@Override
+public MutableComponent getTooltipComponent(Level level) {
+    if (level.dimension() == globalPos.dimension()) {
+        BlockPos pos = globalPos.pos();
+        return Component.translatable("tooltip.vista.hollow_cassette.linked",
+                pos.getX(), pos.getY(), pos.getZ());
+    } else {
+        return Component.translatable("tooltip.vista.hollow_cassette.linked_away", 
+                globalPos.dimension());
+    }
+}
+```
+
+Shows coordinates if in the same dimension, or the dimension name if in a different dimension.
+
+## TriResult
+
+A helper class representing a three-state result: valid with value, valid but empty, or invalid.
+
+```java
+public class TriResult<T> {
+    public static <T> TriResult<T> valid(T value)
+    public static <T> TriResult<T> empty()
+    public static <T> TriResult<T> invalid()
+    
+    public boolean isValid()
+    public @Nullable T getValue()
+    public boolean isEmpty()
+    public void ifValid(Consumer<T> consumer)
+    public void ifPresent(Consumer<T> consumer)
+}
+```
+
+### Factory Methods
+
+<ParamField path="valid" type="static <T> TriResult<T> valid(T value)">
+  Creates a valid result with a value
+</ParamField>
+
+<ParamField path="empty" type="static <T> TriResult<T> empty()">
+  Creates a valid but empty result (e.g., chunk not loaded)
+</ParamField>
+
+<ParamField path="invalid" type="static <T> TriResult<T> invalid()">
+  Creates an invalid result (e.g., source no longer exists)
+</ParamField>
+
+### Usage Example
+
+```java
+TriResult<IBroadcastSource> result = location.get(false);
+
+if (result.isValid()) {
+    IBroadcastSource source = result.getValue();
+    if (source != null) {
+        // Use the source
+    } else {
+        // Valid location but temporarily unavailable
+    }
+} else {
+    // Invalid - should remove this link
+    manager.unlinkFeed(feedUUID);
+}
+```
+
+## Creating Custom Location Types
+
+<Steps>
+
+<Step title="Create a record implementing IBroadcastLocation">
+
+```java
+public record EntityBroadcastLocation(UUID entityUUID) implements IBroadcastLocation {
+    public static final BroadcastLocationType TYPE = new BroadcastLocationType(
+        UUIDUtil.CODEC.xmap(EntityBroadcastLocation::new, EntityBroadcastLocation::entityUUID),
+        UUIDUtil.STREAM_CODEC.map(EntityBroadcastLocation::new, EntityBroadcastLocation::entityUUID)
+    );
+    
+    @Override
+    public BroadcastLocationType type() {
+        return TYPE;
+    }
+}
+```
+
+</Step>
+
+<Step title="Implement the get method">
+
+```java
+@Override
+public TriResult<IBroadcastSource> get(boolean isClient) {
+    Level level = isClient ? Minecraft.getInstance().level 
+                           : PlatHelper.getCurrentServer().overworld();
+    
+    if (level != null) {
+        Entity entity = level.getEntity(entityUUID);
+        if (entity instanceof IBroadcastSource source) {
+            return TriResult.valid(source);
+        } else if (!isClient) {
+            return TriResult.invalid();
+        }
+    }
+    return TriResult.empty();
+}
+```
+
+</Step>
+
+<Step title="Implement getTooltipComponent">
+
+```java
+@Override
+public MutableComponent getTooltipComponent(Level level) {
+    return Component.translatable("tooltip.mymod.entity_feed", entityUUID);
+}
+```
+
+</Step>
+
+<Step title="Register the type">
+
+```java
+public static void init() {
+    Registry.register(VistaMod.BROADCAST_LOCATION_REGISTRY, 
+        new ResourceLocation("mymod", "entity"),
+        EntityBroadcastLocation.TYPE);
+}
+```
+
+</Step>
+
+</Steps>
+
+## See Also
+
+- [BroadcastManager](/api/broadcast-manager) - Managing feed mappings
+- [Video Sources](/api/video-sources) - Video source implementations

@@ -1,0 +1,572 @@
+---
+title: Block Classes
+description: API reference for Vista's block classes including TVBlock, ViewFinderBlock, and SignalProjectorBlock
+---
+
+This page documents the public API for Vista's block classes. These classes define the behavior and properties of blocks that can be placed in the world.
+
+## TVBlock
+
+**Package:** `net.mehvahdjukaar.vista.common.tv`
+
+**Extends:** `HorizontalDirectionalBlock`
+
+**Implements:** `EntityBlock`, `Equipable`, `IOptionalEntityBlock`
+
+The `TVBlock` class represents a television block that can display video content from cassettes. TVs can connect together to form larger displays.
+
+### Properties
+
+<ParamField path="CODEC" type="MapCodec<TVBlock>">
+  Codec for serialization and deserialization of TV blocks
+</ParamField>
+
+<ParamField path="POWER_STATE" type="EnumProperty<PowerState>">
+  Block state property representing the power state of the TV. Values: `OFF`, `DIRECT`, `INDIRECT`
+</ParamField>
+
+<ParamField path="CONNECTION" type="EnumProperty<TVType>">
+  Block state property representing how this TV connects to adjacent TVs. Values: `SINGLE`, `CENTER`, `TOP`, `BOTTOM`, `LEFT`, `RIGHT`, `TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_LEFT`, `BOTTOM_RIGHT`
+</ParamField>
+
+### Constructor
+
+```java
+public TVBlock(Properties properties)
+```
+
+Creates a new TV block with the specified properties. The block will emit light level 3 when powered.
+
+### Public Methods
+
+<Accordion title="getEquipmentSlot()">
+```java
+public EquipmentSlot getEquipmentSlot()
+```
+
+Returns the equipment slot for this block when worn as armor.
+
+<ResponseField name="return" type="EquipmentSlot">
+  `EquipmentSlot.HEAD` - TV blocks can be worn on the head
+</ResponseField>
+</Accordion>
+
+<Accordion title="getTicker()">
+```java
+public @Nullable <T extends BlockEntity> BlockEntityTicker<T> getTicker(
+    Level level, 
+    BlockState state, 
+    BlockEntityType<T> blockEntityType
+)
+```
+
+Returns the block entity ticker for updating TV behavior.
+
+<ParamField path="level" type="Level">
+  The level/world the TV is in
+</ParamField>
+
+<ParamField path="state" type="BlockState">
+  The current block state
+</ParamField>
+
+<ParamField path="blockEntityType" type="BlockEntityType<T>">
+  The block entity type
+</ParamField>
+
+<ResponseField name="return" type="BlockEntityTicker<T>">
+  A ticker that calls `TVBlockEntity::onTick`
+</ResponseField>
+</Accordion>
+
+<Accordion title="getStateForPlacement()">
+```java
+public @Nullable BlockState getStateForPlacement(BlockPlaceContext context)
+```
+
+Determines the initial block state when placed, including facing direction and connection type.
+
+<ParamField path="context" type="BlockPlaceContext">
+  Context information about the placement
+</ParamField>
+
+<ResponseField name="return" type="BlockState">
+  The block state to place, or null if placement is invalid
+</ResponseField>
+</Accordion>
+
+<Accordion title="shouldHaveBlockEntity()">
+```java
+public boolean shouldHaveBlockEntity(BlockStateBase state)
+```
+
+Determines if this TV block should have a block entity. Only the bottom-left TV in a multi-block arrangement has a block entity.
+
+<ParamField path="state" type="BlockStateBase">
+  The block state to check
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if the connection type is `SINGLE` or `BOTTOM_LEFT`
+</ResponseField>
+</Accordion>
+
+<Accordion title="newBlockEntity()">
+```java
+public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state)
+```
+
+Creates a new TV block entity if this block should have one.
+
+<ParamField path="pos" type="BlockPos">
+  The position of the block
+</ParamField>
+
+<ParamField path="state" type="BlockState">
+  The block state
+</ParamField>
+
+<ResponseField name="return" type="BlockEntity">
+  A new `TVBlockEntity` or null
+</ResponseField>
+</Accordion>
+
+<Accordion title="hasAnalogOutputSignal()">
+```java
+protected boolean hasAnalogOutputSignal(BlockState state)
+```
+
+Indicates that TV blocks provide a comparator output signal.
+
+<ResponseField name="return" type="boolean">
+  Always returns `true`
+</ResponseField>
+</Accordion>
+
+<Accordion title="getAnalogOutputSignal()">
+```java
+protected int getAnalogOutputSignal(BlockState state, Level level, BlockPos pos)
+```
+
+Gets the redstone comparator output signal strength based on the inserted cassette.
+
+<ParamField path="state" type="BlockState">
+  The block state
+</ParamField>
+
+<ParamField path="level" type="Level">
+  The level/world
+</ParamField>
+
+<ParamField path="pos" type="BlockPos">
+  The block position
+</ParamField>
+
+<ResponseField name="return" type="int">
+  Signal strength from 0-15, determined by the cassette's `getAnalogSignalStrength()` method
+</ResponseField>
+</Accordion>
+
+### Usage Example
+
+```java
+// Get the TV block from the registry
+Block tvBlock = VistaMod.TV.get();
+
+// Check if a block state is a TV
+if (state.getBlock() instanceof TVBlock tv) {
+    // Get the power state
+    PowerState power = state.getValue(TVBlock.POWER_STATE);
+    boolean isPowered = power.isOn();
+    
+    // Get the connection type
+    TVType connection = state.getValue(TVBlock.CONNECTION);
+    
+    // Get the facing direction
+    Direction facing = state.getValue(TVBlock.FACING);
+}
+
+// Create a TV block state
+BlockState tvState = tvBlock.defaultBlockState()
+    .setValue(TVBlock.FACING, Direction.NORTH)
+    .setValue(TVBlock.POWER_STATE, PowerState.OFF)
+    .setValue(TVBlock.CONNECTION, TVType.SINGLE);
+```
+
+---
+
+## ViewFinderBlock
+
+**Package:** `net.mehvahdjukaar.vista.common.view_finder`
+
+**Extends:** `DirectionalBlock`
+
+**Implements:** `EntityBlock`, `IRotatable`, `IAnalogRotatable`
+
+The `ViewFinderBlock` class represents a camera block that can be controlled by players to view the world from different angles. It can broadcast a live feed to TVs via hollow cassettes.
+
+### Properties
+
+<ParamField path="CODEC" type="MapCodec<ViewFinderBlock>">
+  Codec for serialization and deserialization
+</ParamField>
+
+<ParamField path="ROTATE_TILE" type="EnumProperty<Rotation>">
+  Block state property for the tile rotation. Values: `NONE`, `CLOCKWISE_90`, `CLOCKWISE_180`, `COUNTERCLOCKWISE_90`
+</ParamField>
+
+### Constructor
+
+```java
+public ViewFinderBlock(Properties properties)
+```
+
+Creates a new view finder block with the specified properties.
+
+### Public Methods
+
+<Accordion title="getTicker()">
+```java
+public @Nullable <T extends BlockEntity> BlockEntityTicker<T> getTicker(
+    Level pLevel, 
+    BlockState pState, 
+    BlockEntityType<T> pBlockEntityType
+)
+```
+
+Returns the block entity ticker for updating view finder behavior.
+
+<ResponseField name="return" type="BlockEntityTicker<T>">
+  A ticker that calls `ViewFinderBlockEntity::tick`
+</ResponseField>
+</Accordion>
+
+<Accordion title="getStateForPlacement()">
+```java
+public @Nullable BlockState getStateForPlacement(BlockPlaceContext context)
+```
+
+Determines the initial block state based on the clicked face.
+
+<ParamField path="context" type="BlockPlaceContext">
+  Context information about the placement
+</ParamField>
+
+<ResponseField name="return" type="BlockState">
+  The block state to place with facing set to the clicked face
+</ResponseField>
+</Accordion>
+
+<Accordion title="newBlockEntity()">
+```java
+public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state)
+```
+
+Creates a new view finder block entity.
+
+<ParamField path="pos" type="BlockPos">
+  The position of the block
+</ParamField>
+
+<ParamField path="state" type="BlockState">
+  The block state
+</ParamField>
+
+<ResponseField name="return" type="BlockEntity">
+  A new `ViewFinderBlockEntity`
+</ResponseField>
+</Accordion>
+
+<Accordion title="rotateAnalog()">
+```java
+public void rotateAnalog(
+    BlockState state, 
+    Level level, 
+    BlockPos pos, 
+    Direction face, 
+    boolean ccw, 
+    float speed
+)
+```
+
+Rotates the view finder's camera angle when interacted with analog rotation tools (e.g., from Supplementaries mod).
+
+<ParamField path="state" type="BlockState">
+  The current block state
+</ParamField>
+
+<ParamField path="level" type="Level">
+  The level/world
+</ParamField>
+
+<ParamField path="pos" type="BlockPos">
+  The block position
+</ParamField>
+
+<ParamField path="face" type="Direction">
+  The face being rotated
+</ParamField>
+
+<ParamField path="ccw" type="boolean">
+  Whether rotation is counter-clockwise
+</ParamField>
+
+<ParamField path="speed" type="float">
+  The rotation speed
+</ParamField>
+</Accordion>
+
+<Accordion title="canRotateAnalog()">
+```java
+public boolean canRotateAnalog(
+    BlockState state, 
+    Level level, 
+    BlockPos pos, 
+    Direction face
+)
+```
+
+Checks if the view finder can be rotated on the given face.
+
+<ResponseField name="return" type="boolean">
+  `true` if the face axis is different from the facing axis
+</ResponseField>
+</Accordion>
+
+<Accordion title="getRenderShape()">
+```java
+public RenderShape getRenderShape(BlockState state)
+```
+
+<ResponseField name="return" type="RenderShape">
+  `RenderShape.ENTITYBLOCK_ANIMATED` - uses animated block entity rendering
+</ResponseField>
+</Accordion>
+
+### Usage Example
+
+```java
+// Get the view finder block
+Block viewFinderBlock = VistaMod.VIEWFINDER.get();
+
+// Check if a block is a view finder
+if (level.getBlockState(pos).getBlock() instanceof ViewFinderBlock) {
+    // Get the block entity
+    if (level.getBlockEntity(pos) instanceof ViewFinderBlockEntity viewFinder) {
+        // Get camera orientation
+        float yaw = viewFinder.getYaw();
+        float pitch = viewFinder.getPitch();
+        int zoomLevel = viewFinder.getZoomLevel();
+        
+        // Get the unique ID for linking with cassettes
+        UUID viewFinderUUID = viewFinder.getUUID();
+    }
+}
+
+// Place a view finder facing up
+BlockState viewFinderState = viewFinderBlock.defaultBlockState()
+    .setValue(ViewFinderBlock.FACING, Direction.UP)
+    .setValue(ViewFinderBlock.ROTATE_TILE, Rotation.NONE);
+```
+
+---
+
+## SignalProjectorBlock
+
+**Package:** `net.mehvahdjukaar.vista.common.projector`
+
+**Extends:** `BaseEntityBlock`
+
+The `SignalProjectorBlock` is an advanced block that can broadcast video content from URLs. It requires operator permissions or ComputerCraft to edit.
+
+### Properties
+
+<ParamField path="CODEC" type="MapCodec<SignalProjectorBlock>">
+  Codec for serialization and deserialization
+</ParamField>
+
+### Constructor
+
+```java
+public SignalProjectorBlock(Properties properties)
+```
+
+Creates a new signal projector block with the specified properties.
+
+### Public Methods
+
+<Accordion title="newBlockEntity()">
+```java
+public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state)
+```
+
+Creates a new signal projector block entity.
+
+<ParamField path="pos" type="BlockPos">
+  The position of the block
+</ParamField>
+
+<ParamField path="state" type="BlockState">
+  The block state
+</ParamField>
+
+<ResponseField name="return" type="BlockEntity">
+  A new `SignalProjectorBlockEntity`
+</ResponseField>
+</Accordion>
+
+<Accordion title="useItemOn()">
+```java
+protected ItemInteractionResult useItemOn(
+    ItemStack stack, 
+    BlockState state, 
+    Level level, 
+    BlockPos pos, 
+    Player player, 
+    InteractionHand hand, 
+    BlockHitResult hitResult
+)
+```
+
+Handles player interaction to open the configuration GUI.
+
+<ParamField path="stack" type="ItemStack">
+  The item in the player's hand
+</ParamField>
+
+<ParamField path="state" type="BlockState">
+  The block state
+</ParamField>
+
+<ParamField path="level" type="Level">
+  The level/world
+</ParamField>
+
+<ParamField path="pos" type="BlockPos">
+  The block position
+</ParamField>
+
+<ParamField path="player" type="Player">
+  The player interacting
+</ParamField>
+
+<ParamField path="hand" type="InteractionHand">
+  The hand used
+</ParamField>
+
+<ParamField path="hitResult" type="BlockHitResult">
+  The hit result
+</ParamField>
+
+<ResponseField name="return" type="ItemInteractionResult">
+  Success if the GUI was opened, pass otherwise
+</ResponseField>
+</Accordion>
+
+### Usage Example
+
+```java
+// Get the signal projector block
+Block projectorBlock = VistaMod.SIGNAL_PROJECTOR.get();
+
+// Check if a block is a signal projector
+if (level.getBlockState(pos).getBlock() instanceof SignalProjectorBlock) {
+    // Get the block entity
+    if (level.getBlockEntity(pos) instanceof SignalProjectorBlockEntity projector) {
+        // Get the configured URL
+        String url = projector.getUrl();
+        
+        // Set a new URL (requires operator permissions)
+        if (projector.canBeEditedBy(player)) {
+            projector.setUrl("https://example.com/video.mp4");
+            projector.setChanged();
+        }
+        
+        // Get the broadcast UUID for linking
+        UUID broadcastId = projector.getUUID();
+    }
+}
+```
+
+---
+
+## Enums and Supporting Types
+
+### PowerState
+
+**Package:** `net.mehvahdjukaar.vista.common.tv`
+
+Represents the power state of a TV block.
+
+```java
+public enum PowerState implements StringRepresentable {
+    OFF,      // TV is not powered
+    DIRECT,   // TV is directly powered by redstone
+    INDIRECT  // TV is indirectly powered (through connection)
+}
+```
+
+<Accordion title="PowerState Methods">
+```java
+public static PowerState direct(boolean powered)
+```
+Returns `DIRECT` if powered is true, `OFF` otherwise.
+
+```java
+public static PowerState indirect(PowerState existing, boolean indirectPower)
+```
+Returns the appropriate indirect power state based on existing state.
+
+```java
+public boolean isOn()
+```
+Returns `true` if the state is not `OFF`.
+
+```java
+public boolean isStrong()
+```
+Returns `true` if the state is `DIRECT`.
+</Accordion>
+
+### TVType
+
+**Package:** `net.mehvahdjukaar.vista.common.tv`
+
+Represents how a TV block connects to adjacent TV blocks.
+
+```java
+public enum TVType implements StringRepresentable {
+    SINGLE,        // Standalone TV
+    CENTER,        // Connected on all sides
+    TOP,           // Connected below, left, and right
+    BOTTOM,        // Connected above, left, and right
+    LEFT,          // Connected above, below, and right
+    RIGHT,         // Connected above, below, and left
+    TOP_LEFT,      // Connected below and right
+    TOP_RIGHT,     // Connected below and left
+    BOTTOM_LEFT,   // Connected above and right
+    BOTTOM_RIGHT   // Connected above and left
+}
+```
+
+<Accordion title="TVType Methods">
+```java
+public static TVType fromConnections(
+    boolean up, 
+    boolean down, 
+    boolean left, 
+    boolean right
+)
+```
+Creates a TVType from connection directions.
+
+```java
+public boolean isConnected(Direction worldSide, Direction tvFacing)
+```
+Checks if this TV is connected in the given world direction.
+
+```java
+public boolean isConnected(Direction2D dir)
+```
+Checks if this TV is connected in the given 2D direction.
+</Accordion>

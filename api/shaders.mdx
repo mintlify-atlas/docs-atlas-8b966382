@@ -1,0 +1,382 @@
+---
+title: Shaders
+description: Shader system and GLSL programs for visual effects
+---
+
+# Shader System
+
+Vista uses custom GLSL shaders to create authentic retro television effects, including CRT overlays, NTSC encoding, and scanlines.
+
+## Shader Organization
+
+Shaders are located in `assets/vista/shaders/` with the following structure:
+
+```
+shaders/
+├── core/           # Core shaders for rendering
+│   ├── camera_view.vsh
+│   ├── camera_view.fsh
+│   ├── camera_view.json
+│   ├── static_noise.vsh
+│   ├── static_noise.fsh
+│   └── static_noise.json
+├── post/           # Post-processing effects
+│   ├── empty.json
+│   ├── ntsc_codec.json
+│   └── ntsc_tv.json
+└── include/        # Shared shader libraries
+    └── crt_effects.glsl
+```
+
+## Core Shaders
+
+### camera_view
+
+Vertex and fragment shaders for rendering camera viewfinder perspective.
+
+**Files**: 
+- `camera_view.vsh` - Vertex shader
+- `camera_view.fsh` - Fragment shader
+- `camera_view.json` - Shader program definition
+
+**Usage**: Renders the world from a viewfinder's camera position and orientation.
+
+```json camera_view.json
+{
+  "vertex": "vista:camera_view",
+  "fragment": "vista:camera_view",
+  "samplers": [
+    { "name": "Sampler0" },
+    { "name": "Sampler1" }
+  ],
+  "uniforms": [
+    { "name": "ModelViewMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "ProjMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] }
+  ]
+}
+```
+
+### static_noise
+
+Shaders for rendering static noise effect.
+
+**Files**:
+- `static_noise.vsh` - Vertex shader
+- `static_noise.fsh` - Fragment shader  
+- `static_noise.json` - Shader program definition
+
+**Usage**: Renders TV static/snow effect when no signal is present or during enderman detection.
+
+```json static_noise.json
+{
+  "vertex": "vista:static_noise",
+  "fragment": "vista:static_noise",
+  "samplers": [
+    { "name": "Sampler0" }
+  ],
+  "uniforms": [
+    { "name": "ModelViewMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "ProjMat", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+    { "name": "Time", "type": "float", "count": 1, "values": [ 0.0 ] }
+  ]
+}
+```
+
+## Post-Processing Effects
+
+### ntsc_codec
+
+Simulates NTSC video encoding/decoding artifacts.
+
+**File**: `ntsc_codec.json`
+
+**Effects**:
+- YIQ color space conversion
+- Chroma subsampling
+- Luma/chroma bleeding
+- Composite video artifacts
+
+**Uniforms**:
+- `InSize` - Input texture dimensions
+- `OutSize` - Output texture dimensions
+- `Time` - Animation time for chromatic aberration
+
+### ntsc_tv
+
+Complete NTSC television simulation with additional CRT effects.
+
+**File**: `ntsc_tv.json`
+
+**Effects**:
+- NTSC codec simulation
+- Scanlines
+- Pincushion distortion
+- Vignette
+- Screen curvature
+
+## Shader Include Library
+
+### crt_effects.glsl
+
+Shared GLSL library with CRT effect functions.
+
+**Location**: `assets/vista/shaders/include/crt_effects.glsl`
+
+<Tabs>
+  <Tab title="Vignette">
+    ```glsl crt_effects.glsl
+    vec3 vignette(vec2 uv, vec3 color) {
+        float dist = distance(uv, vec2(0.5));
+        float vignette = smoothstep(0.8, 0.4, dist);
+        return color * vignette;
+    }
+    ```
+
+    Creates a darkened border around the screen edges.
+
+    <ParamField path="uv" type="vec2">
+      UV coordinates (0-1 range)
+    </ParamField>
+    <ParamField path="color" type="vec3">
+      Input RGB color
+    </ParamField>
+    <ResponseField name="return" type="vec3">
+      Color with vignette applied
+    </ResponseField>
+  </Tab>
+
+  <Tab title="Noise">
+    ```glsl crt_effects.glsl
+    float noise(vec2 uv, float time) {
+        return fract(sin(dot(uv + time, vec2(12.9898, 78.233))) * 43758.5453);
+    }
+    ```
+
+    Generates pseudo-random noise.
+
+    <ParamField path="uv" type="vec2">
+      UV coordinates
+    </ParamField>
+    <ParamField path="time" type="float">
+      Time value for animation
+    </ParamField>
+    <ResponseField name="return" type="float">
+      Noise value (0-1 range)
+    </ResponseField>
+  </Tab>
+
+  <Tab title="Turn On Effect">
+    ```glsl crt_effects.glsl
+    vec3 turnOnEffect(vec2 uv, vec3 color, float progress) {
+        float line = step(abs(uv.y - 0.5) - progress * 0.5, 0.002);
+        return mix(color, vec3(1.0), line);
+    }
+    ```
+
+    Creates the classic CRT "turn on" effect with a horizontal line.
+
+    <ParamField path="uv" type="vec2">
+      UV coordinates
+    </ParamField>
+    <ParamField path="color" type="vec3">
+      Input color
+    </ParamField>
+    <ParamField path="progress" type="float">
+      Animation progress (0-1)
+    </ParamField>
+    <ResponseField name="return" type="vec3">
+      Color with turn-on effect
+    </ResponseField>
+  </Tab>
+
+  <Tab title="Turn Off Effect">
+    ```glsl crt_effects.glsl
+    vec3 turnOffEffect(vec2 uv, vec3 color, float progress) {
+        float line = step(abs(uv.y - 0.5), (1.0 - progress) * 0.5);
+        return color * line;
+    }
+    ```
+
+    Creates the CRT "turn off" effect where the image collapses to center.
+
+    <ParamField path="uv" type="vec2">
+      UV coordinates
+    </ParamField>
+    <ParamField path="color" type="vec3">
+      Input color
+    </ParamField>
+    <ParamField path="progress" type="float">
+      Animation progress (0-1)
+    </ParamField>
+    <ResponseField name="return" type="vec3">
+      Color with turn-off effect
+    </ResponseField>
+  </Tab>
+
+  <Tab title="VHS Pause">
+    ```glsl crt_effects.glsl
+    vec3 vhsPause(vec2 uv, vec3 color, float time) {
+        float noise = noise(uv, time);
+        float jitter = (noise - 0.5) * 0.1;
+        vec2 pauseUV = vec2(uv.x, fract(uv.y + jitter));
+        return texture(Sampler0, pauseUV).rgb;
+    }
+    ```
+
+    Simulates VHS pause distortion with vertical jitter.
+
+    <ParamField path="uv" type="vec2">
+      UV coordinates
+    </ParamField>
+    <ParamField path="color" type="vec3">
+      Input color
+    </ParamField>
+    <ParamField path="time" type="float">
+      Time for noise animation
+    </ParamField>
+    <ResponseField name="return" type="vec3">
+      Color with pause distortion
+    </ResponseField>
+  </Tab>
+</Tabs>
+
+## VistaRenderTypes
+
+Java utility class for managing custom render types.
+
+**Package**: `net.mehvahdjukaar.vista.client`
+
+### Custom Render Types
+
+<Accordion title="TV Screen Render Type">
+  Creates a render type for TV screens with custom shaders.
+
+  ```java
+  public static RenderType tvScreen(ResourceLocation texture, 
+                                    boolean ntscEffect,
+                                    boolean scanlines) {
+      // Configure render state with:
+      // - Texture
+      // - Shader program (with/without NTSC)
+      // - Alpha blending
+      // - No depth test
+      return RenderType.create(...);
+  }
+  ```
+
+  <ParamField path="texture" type="ResourceLocation" required>
+    Texture to render on the screen
+  </ParamField>
+  <ParamField path="ntscEffect" type="boolean" required>
+    Whether to apply NTSC codec simulation
+  </ParamField>
+  <ParamField path="scanlines" type="boolean" required>
+    Whether to render scanlines
+  </ParamField>
+</Accordion>
+
+<Accordion title="Static Noise Render Type">
+  Render type for TV static effect.
+
+  ```java
+  public static RenderType staticNoise() {
+      return RenderType.create(
+          "vista_static_noise",
+          DefaultVertexFormat.POSITION_TEX,
+          VertexFormat.Mode.QUADS,
+          // Uses static_noise shader
+          // No texture needed, generated procedurally
+      );
+  }
+  ```
+</Accordion>
+
+## Shader Customization
+
+You can customize Vista's visual effects through resource packs by overriding shader files.
+
+<Steps>
+  <Step title="Create Resource Pack">
+    Create a resource pack with the structure:
+    ```
+    my_vista_pack/
+    ├── pack.mcmeta
+    └── assets/
+        └── vista/
+            └── shaders/
+                ├── core/
+                ├── post/
+                └── include/
+    ```
+  </Step>
+
+  <Step title="Override Shader Files">
+    Copy the shader files you want to modify from Vista's JAR:
+    ```bash
+    # Example: Customize CRT effects
+    my_vista_pack/assets/vista/shaders/include/crt_effects.glsl
+    ```
+  </Step>
+
+  <Step title="Modify GLSL Code">
+    Edit the shader code to customize effects:
+    ```glsl crt_effects.glsl
+    // Example: Make vignette more intense
+    vec3 vignette(vec2 uv, vec3 color) {
+        float dist = distance(uv, vec2(0.5));
+        float vignette = smoothstep(0.6, 0.2, dist); // More intense
+        return color * vignette;
+    }
+    ```
+  </Step>
+
+  <Step title="Load Resource Pack">
+    Enable your resource pack in Minecraft's resource pack menu.
+  </Step>
+</Steps>
+
+<Warning>
+  Shader modifications require knowledge of GLSL. Invalid shader code will cause rendering errors.
+</Warning>
+
+## Performance Impact
+
+Shader effects have varying performance costs:
+
+<CardGroup cols={2}>
+  <Card title="Low Impact" icon="gauge-simple-low">
+    - Static noise
+    - Vignette
+    - Turn on/off effects
+  </Card>
+  <Card title="Medium Impact" icon="gauge-simple-med">
+    - Scanlines
+    - Color grading
+    - Screen curvature
+  </Card>
+  <Card title="High Impact" icon="gauge-simple-high">
+    - NTSC codec simulation
+    - Composite artifacts
+    - Chromatic aberration
+  </Card>
+  <Card title="Optimization" icon="sliders">
+    Use client configs to disable expensive effects on lower-end hardware
+  </Card>
+</CardGroup>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Visual Effects" href="/features/visual-effects">
+    User guide for visual effects
+  </Card>
+  <Card title="Renderers" href="/api/renderers">
+    Renderer classes that use shaders
+  </Card>
+  <Card title="Textures" href="/api/textures">
+    Texture management system
+  </Card>
+  <Card title="Configuration" href="/guides/configuration">
+    Client configuration options
+  </Card>
+</CardGroup>

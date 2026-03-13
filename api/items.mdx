@@ -1,0 +1,562 @@
+---
+title: Item Classes
+description: API reference for Vista's item classes including cassettes and related items
+---
+
+This page documents the public API for Vista's item classes. These define the behavior of items that players can hold and use.
+
+## CassetteItem
+
+**Package:** `net.mehvahdjukaar.vista.common.cassette`
+
+**Extends:** `Item`
+
+**Implements:** `ITvCassette`
+
+The `CassetteItem` class represents video cassettes that can be inserted into TV blocks to play videos.
+
+### Constructor
+
+```java
+public CassetteItem(Properties properties)
+```
+
+Creates a new cassette item with the specified properties.
+
+<ParamField path="properties" type="Item.Properties">
+  The item properties (typically includes `.rarity(Rarity.RARE).stacksTo(1)`)
+</ParamField>
+
+### Public Methods
+
+<Accordion title="onCraftedPostProcess()">
+```java
+public void onCraftedPostProcess(ItemStack stack, Level level)
+```
+
+Called after crafting to assign custom cassette types based on the item's custom name.
+
+<ParamField path="stack" type="ItemStack">
+  The crafted item stack
+</ParamField>
+
+<ParamField path="level" type="Level">
+  The level/world where crafting occurred
+</ParamField>
+
+**Note:** If the cassette has a custom name matching a supporter tape ID, it will be automatically converted to that tape.
+</Accordion>
+
+<Accordion title="assignCustomCassette()">
+```java
+public static void assignCustomCassette(ItemStack stack, Level level)
+public static void assignCustomCassette(ItemStack stack, Level level, String name)
+```
+
+Attempts to assign a supporter cassette tape based on the item's name.
+
+<ParamField path="stack" type="ItemStack">
+  The cassette item stack
+</ParamField>
+
+<ParamField path="level" type="Level">
+  The level/world
+</ParamField>
+
+<ParamField path="name" type="String">
+  The name to match against supporter tapes (overload only)
+</ParamField>
+
+**Behavior:** Checks registered supporter tapes and assigns matching ones, removing the custom name.
+</Accordion>
+
+<Accordion title="appendHoverText()">
+```java
+public void appendHoverText(
+    ItemStack stack, 
+    TooltipContext context, 
+    List<Component> tooltipComponents, 
+    TooltipFlag tooltipFlag
+)
+```
+
+Adds tooltip text describing the cassette tape type.
+
+<ParamField path="stack" type="ItemStack">
+  The item stack
+</ParamField>
+
+<ParamField path="context" type="TooltipContext">
+  Tooltip context
+</ParamField>
+
+<ParamField path="tooltipComponents" type="List<Component>">
+  List to add tooltip components to
+</ParamField>
+
+<ParamField path="tooltipFlag" type="TooltipFlag">
+  Tooltip display flags
+</ParamField>
+</Accordion>
+
+<Accordion title="getAnalogSignalStrength()">
+```java
+public int getAnalogSignalStrength(ItemStack stack)
+```
+
+Gets the redstone comparator signal strength for this cassette.
+
+<ParamField path="stack" type="ItemStack">
+  The cassette item stack
+</ParamField>
+
+<ResponseField name="return" type="int">
+  Signal strength from 0-15, determined by the cassette tape's `getRedstoneOutput()` value, or 1 if no tape is set
+</ResponseField>
+</Accordion>
+
+### Data Components
+
+Cassette items use the `CASSETTE_TAPE_COMPONENT` data component to store their tape type:
+
+```java
+Holder<CassetteTape> tape = stack.get(VistaMod.CASSETTE_TAPE_COMPONENT.get());
+```
+
+### Usage Example
+
+```java
+// Create a cassette item
+ItemStack cassette = new ItemStack(VistaMod.CASSETTE.get());
+
+// Get the cassette tape type
+Holder<CassetteTape> tape = cassette.get(VistaMod.CASSETTE_TAPE_COMPONENT.get());
+if (tape != null) {
+    CassetteTape tapeData = tape.value();
+    ResourceLocation assetId = tapeData.assetId();
+    int color = tapeData.color();
+    System.out.println("Cassette: " + assetId + ", color: #" + Integer.toHexString(color));
+}
+
+// Set a specific cassette tape type
+Registry<CassetteTape> registry = level.registryAccess()
+    .registryOrThrow(VistaMod.CASSETTE_TAPE_REGISTRY_KEY);
+Holder<CassetteTape> myTape = registry.getHolderOrThrow(
+    ResourceKey.create(VistaMod.CASSETTE_TAPE_REGISTRY_KEY, 
+    ResourceLocation.fromNamespaceAndPath("vista", "example_tape"))
+);
+cassette.set(VistaMod.CASSETTE_TAPE_COMPONENT.get(), myTape);
+
+// Check if a cassette can be inserted into a TV
+if (cassette.getItem() instanceof ITvCassette) {
+    System.out.println("This is a valid TV cassette!");
+    int signalStrength = ((ITvCassette) cassette.getItem())
+        .getAnalogSignalStrength(cassette);
+    System.out.println("Comparator output: " + signalStrength);
+}
+
+// Create a named cassette (for supporter tapes)
+ItemStack namedCassette = new ItemStack(VistaMod.CASSETTE.get());
+namedCassette.set(DataComponents.CUSTOM_NAME, Component.literal("supporter_name"));
+CassetteItem.assignCustomCassette(namedCassette, level);
+// If "supporter_name" matches a registered supporter tape, it will be assigned
+```
+
+---
+
+## HollowCassetteItem
+
+**Package:** `net.mehvahdjukaar.vista.common.cassette`
+
+**Extends:** `Item`
+
+**Implements:** `ITvCassette`
+
+The `HollowCassetteItem` represents a special cassette that can be linked to a live broadcast source (ViewFinder or SignalProjector) to display real-time feeds on TVs.
+
+### Constructor
+
+```java
+public HollowCassetteItem(Properties properties)
+```
+
+Creates a new hollow cassette item.
+
+<ParamField path="properties" type="Item.Properties">
+  The item properties (typically includes `.rarity(Rarity.RARE).stacksTo(1)`)
+</ParamField>
+
+### Public Methods
+
+<Accordion title="useOn()">
+```java
+public InteractionResult useOn(UseOnContext context)
+```
+
+Handles right-clicking on a broadcast source to link this cassette.
+
+<ParamField path="context" type="UseOnContext">
+  The use context containing position, player, and item information
+</ParamField>
+
+<ResponseField name="return" type="InteractionResult">
+  `InteractionResult.SUCCESS` if linked to a valid broadcast source, or passes to super otherwise
+</ResponseField>
+
+**Behavior:** When right-clicking a ViewFinder or SignalProjector, stores that block's UUID in the cassette's data component.
+</Accordion>
+
+<Accordion title="isFoil()">
+```java
+public boolean isFoil(ItemStack stack)
+```
+
+Determines if the item should have an enchantment glint.
+
+<ParamField path="stack" type="ItemStack">
+  The item stack
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if the cassette is linked to a broadcast source or has enchantments
+</ResponseField>
+</Accordion>
+
+<Accordion title="appendHoverText()">
+```java
+public void appendHoverText(
+    ItemStack stack, 
+    TooltipContext context, 
+    List<Component> tooltipComponents, 
+    TooltipFlag tooltipFlag
+)
+```
+
+Adds tooltip text showing the linked broadcast source.
+
+<ParamField path="stack" type="ItemStack">
+  The item stack
+</ParamField>
+
+<ParamField path="context" type="TooltipContext">
+  Tooltip context
+</ParamField>
+
+<ParamField path="tooltipComponents" type="List<Component>">
+  List to add tooltip components to
+</ParamField>
+
+<ParamField path="tooltipFlag" type="TooltipFlag">
+  Tooltip display flags
+</ParamField>
+
+**Output:** Shows "Linked to: [Location]" or "Linked to: Unknown" in gray text.
+</Accordion>
+
+<Accordion title="getAnalogSignalStrength()">
+```java
+public int getAnalogSignalStrength(ItemStack stack)
+```
+
+Gets the redstone comparator signal strength.
+
+<ResponseField name="return" type="int">
+  Always returns `15` (maximum signal strength)
+</ResponseField>
+</Accordion>
+
+### Data Components
+
+Hollow cassettes use the `LINKED_FEED_COMPONENT` data component to store the broadcast source UUID:
+
+```java
+UUID feedId = stack.get(VistaMod.LINKED_FEED_COMPONENT.get());
+```
+
+### Usage Example
+
+```java
+// Create a hollow cassette
+ItemStack hollowCassette = new ItemStack(VistaMod.HOLLOW_CASSETTE.get());
+
+// Link it to a view finder programmatically
+if (level.getBlockEntity(viewFinderPos) instanceof ViewFinderBlockEntity viewFinder) {
+    UUID viewFinderUUID = viewFinder.getUUID();
+    hollowCassette.set(VistaMod.LINKED_FEED_COMPONENT.get(), viewFinderUUID);
+    System.out.println("Linked cassette to ViewFinder: " + viewFinderUUID);
+}
+
+// Check if a hollow cassette is linked
+UUID linkedFeed = hollowCassette.get(VistaMod.LINKED_FEED_COMPONENT.get());
+if (linkedFeed != null) {
+    System.out.println("This cassette is linked to broadcast: " + linkedFeed);
+    
+    // Find the broadcast location
+    BroadcastManager manager = BroadcastManager.getInstance(level);
+    IBroadcastLocation location = manager.getFeedLocationById(linkedFeed);
+    if (location != null) {
+        BlockPos sourcePos = location.getPosition();
+        System.out.println("Broadcast source at: " + sourcePos);
+    }
+} else {
+    System.out.println("This cassette is not linked");
+}
+
+// Insert the hollow cassette into a TV
+if (level.getBlockEntity(tvPos) instanceof TVBlockEntity tv) {
+    if (tv.canPlaceItem(0, hollowCassette)) {
+        tv.setDisplayedItem(hollowCassette);
+        tv.setChanged();
+        System.out.println("Now displaying live feed on TV!");
+    }
+}
+
+// Check comparator output
+if (hollowCassette.getItem() instanceof ITvCassette cassette) {
+    int strength = cassette.getAnalogSignalStrength(hollowCassette);
+    System.out.println("Comparator strength: " + strength); // Always 15
+}
+```
+
+---
+
+## TVItem
+
+**Package:** `net.mehvahdjukaar.vista.common.tv`
+
+**Extends:** `BlockItem`
+
+**Implements:** `Equipable`
+
+The TV block item. Since TVBlock itself implements Equipable, this is a standard BlockItem that allows TVs to be worn as helmets.
+
+### Constructor
+
+```java
+public TVItem(Block block, Item.Properties properties)
+```
+
+### Usage Example
+
+```java
+// Get the TV item
+Item tvItem = VistaMod.TV_ITEM.get();
+ItemStack tvStack = new ItemStack(tvItem);
+
+// TVs can be worn on the head
+if (tvStack.getItem() instanceof Equipable equipable) {
+    EquipmentSlot slot = equipable.getEquipmentSlot();
+    System.out.println("TV can be equipped in: " + slot); // HEAD
+}
+
+// Equip the TV on a player
+player.setItemSlot(EquipmentSlot.HEAD, tvStack);
+```
+
+---
+
+## Supporting Types
+
+### ITvCassette Interface
+
+**Package:** `net.mehvahdjukaar.vista.common.cassette`
+
+Interface implemented by all cassette items.
+
+```java
+public interface ITvCassette {
+    int getAnalogSignalStrength(ItemStack stack);
+}
+```
+
+<Accordion title="Interface Method">
+**`getAnalogSignalStrength(ItemStack stack)`**
+
+Returns the redstone comparator output signal strength for this cassette when inserted in a TV.
+
+<ParamField path="stack" type="ItemStack">
+  The cassette item stack
+</ParamField>
+
+<ResponseField name="return" type="int">
+  Signal strength from 0-15
+</ResponseField>
+
+**Implementation:**
+- `CassetteItem`: Returns the `comparatorOutput` value from the cassette tape data (default 1)
+- `HollowCassetteItem`: Always returns 15
+</Accordion>
+
+### CassetteTape Record
+
+**Package:** `net.mehvahdjukaar.vista.common.cassette`
+
+Data class representing a cassette tape configuration, loaded from datapacks.
+
+```java
+public record CassetteTape(
+    ResourceLocation assetId,
+    int color,
+    Optional<Holder<SoundEvent>> soundEvent,
+    Optional<Integer> soundDuration,
+    int comparatorOutput
+) {
+    public int getRedstoneOutput();
+}
+```
+
+<ParamField path="assetId" type="ResourceLocation">
+  The resource location of the video asset file (without .webm extension)
+</ParamField>
+
+<ParamField path="color" type="int">
+  The RGB color of the cassette label (e.g., `0xFF5733`)
+</ParamField>
+
+<ParamField path="soundEvent" type="Optional<Holder<SoundEvent>>">
+  Optional sound event to play when the cassette is inserted
+</ParamField>
+
+<ParamField path="soundDuration" type="Optional<Integer>">
+  Duration of the sound in ticks (required if soundEvent is present)
+</ParamField>
+
+<ParamField path="comparatorOutput" type="int">
+  Redstone comparator output signal strength (0-15, default 1)
+</ParamField>
+
+#### Codec
+
+Cassette tapes are loaded from JSON files in datapacks:
+
+```json
+{
+  "asset_id": "vista:my_video",
+  "color": 16733491,
+  "sound": "vista:cassette.my_sound",
+  "sound_duration": 100,
+  "comparator_output": 5
+}
+```
+
+Place these in `data/<namespace>/vista/cassette_tape/` directory.
+
+### Usage Example
+
+```java
+// Access the cassette tape registry
+Registry<CassetteTape> registry = level.registryAccess()
+    .registryOrThrow(VistaMod.CASSETTE_TAPE_REGISTRY_KEY);
+
+// Get a specific tape
+ResourceLocation tapeId = ResourceLocation.fromNamespaceAndPath("vista", "example");
+Optional<Holder.Reference<CassetteTape>> tapeHolder = registry.getHolder(
+    ResourceKey.create(VistaMod.CASSETTE_TAPE_REGISTRY_KEY, tapeId)
+);
+
+if (tapeHolder.isPresent()) {
+    CassetteTape tape = tapeHolder.get().value();
+    
+    System.out.println("Asset ID: " + tape.assetId());
+    System.out.println("Color: #" + Integer.toHexString(tape.color()));
+    System.out.println("Comparator output: " + tape.comparatorOutput());
+    
+    if (tape.soundEvent().isPresent()) {
+        System.out.println("Has sound, duration: " + tape.soundDuration().get() + " ticks");
+    }
+}
+
+// List all registered tapes
+for (var entry : registry.entrySet()) {
+    ResourceLocation id = entry.getKey().location();
+    CassetteTape tape = entry.getValue();
+    System.out.println(id + ": " + tape.assetId());
+}
+
+// Get supporter tapes
+for (var holder : registry.getTagOrEmpty(VistaMod.SUPPORTER_TAPES_TAG)) {
+    holder.unwrapKey().ifPresent(key -> {
+        System.out.println("Supporter tape: " + key.location());
+    });
+}
+```
+
+---
+
+## Registry and Components Reference
+
+### Registries
+
+<Tabs>
+  <Tab title="Cassette Tapes">
+    **Registry Key:** `VistaMod.CASSETTE_TAPE_REGISTRY_KEY`
+    
+    **Type:** `Registry<CassetteTape>`
+    
+    **Location:** `data/<namespace>/vista/cassette_tape/`
+    
+    Datapack registry for defining video cassette tapes with their assets, colors, and properties.
+  </Tab>
+  
+  <Tab title="Broadcast Locations">
+    **Registry Key:** `BROADCAST_LOCATION_REGISTRY`
+    
+    **Type:** `Registry<BroadcastLocationType>`
+    
+    Internal registry for broadcast source types (ViewFinder, SignalProjector).
+  </Tab>
+</Tabs>
+
+### Data Components
+
+<ParamField path="CASSETTE_TAPE_COMPONENT" type="DataComponentType<Holder<CassetteTape>>">
+  Stores which cassette tape is on a cassette item. Used by `CassetteItem`.
+  
+  ```java
+  Holder<CassetteTape> tape = stack.get(VistaMod.CASSETTE_TAPE_COMPONENT.get());
+  ```
+</ParamField>
+
+<ParamField path="LINKED_FEED_COMPONENT" type="DataComponentType<UUID>">
+  Stores the broadcast source UUID on a hollow cassette. Used by `HollowCassetteItem`.
+  
+  ```java
+  UUID feedId = stack.get(VistaMod.LINKED_FEED_COMPONENT.get());
+  ```
+</ParamField>
+
+### Item Tags
+
+<ParamField path="SUPPORTER_TAPES_TAG" type="TagKey<CassetteTape>">
+  Tag: `vista:supporter_tapes`
+  
+  Identifies cassette tapes that are supporter-exclusive and can be obtained by naming a cassette.
+</ParamField>
+
+<ParamField path="GLASS_PANES_TAG" type="TagKey<Item>">
+  Tag: `c:glass_panes`
+  
+  Items that can be inserted into view finders as color filters.
+</ParamField>
+
+### Sound Events
+
+<ParamField path="CASSETTE_INSERT_SOUND" type="SoundEvent">
+  Sound: `vista:block.television.insert`
+  
+  Played when a cassette is inserted into a TV.
+</ParamField>
+
+<ParamField path="CASSETTE_EJECT_SOUND" type="SoundEvent">
+  Sound: `vista:block.television.eject`
+  
+  Played when a cassette is ejected from a TV.
+</ParamField>
+
+<ParamField path="TV_STATIC_SOUND" type="SoundEvent">
+  Sound: `vista:block.television.static`
+  
+  Duration: `STATIC_SOUND_DURATION` = 80 ticks (4 seconds)
+  
+  Background static sound for TVs.
+</ParamField>

@@ -1,0 +1,148 @@
+---
+title: Setting Up Cameras
+description: Learn how to place and configure viewfinder cameras in Vista
+---
+
+Viewfinder cameras are the heart of Vista's broadcast system, allowing you to capture live footage from anywhere in your world and display it on TVs.
+
+## Placing a Viewfinder
+
+The viewfinder is a block that acts as a camera, capturing what it "sees" and broadcasting it to connected TVs.
+
+<Steps>
+  <Step title="Craft a Viewfinder">
+    Craft a viewfinder using the crafting recipe (check your recipe book in-game).
+  </Step>
+  
+  <Step title="Choose Your Location">
+    Place the viewfinder block in the location where you want to capture footage. Consider:
+    - **Visibility**: What you want the camera to see
+    - **Safety**: Protected areas where it won't be destroyed
+    - **Accessibility**: Easy to reach for adjustments
+  </Step>
+  
+  <Step title="Position the Block">
+    The viewfinder's orientation matters. The direction you face when placing it determines its initial viewing angle.
+  </Step>
+</Steps>
+
+## Adjusting Camera Angles
+
+Once placed, you can control the viewfinder's viewing angle to capture exactly what you want.
+
+### Controlling Pitch and Yaw
+
+Right-click the viewfinder to enter control mode. While controlling:
+
+- **Yaw (Horizontal Rotation)**: Move your mouse left and right to pan the camera
+- **Pitch (Vertical Rotation)**: Move your mouse up and down to tilt the camera
+- **Zoom**: The viewfinder supports up to **44x zoom** for detailed shots
+
+<Note>
+  The viewfinder uses smooth interpolation for camera movement, creating professional-looking footage without jarring transitions.
+</Note>
+
+### Camera Constraints
+
+The viewfinder has built-in rotation constraints based on how it's mounted:
+
+- Pitch is clamped within configured min/max values
+- Yaw is restricted to prevent unnatural rotation
+- These constraints ensure realistic camera behavior
+
+### Locking the Camera
+
+You can lock a viewfinder's position to prevent accidental changes:
+
+1. Adjust the camera to your desired angle
+2. Set the lock flag (implementation varies by integration)
+3. Locked cameras will maintain their exact position
+
+<Warning>
+  Only players who can access the viewfinder block can control it. Protect your cameras in claimed or protected areas.
+</Warning>
+
+## Advanced Camera Features
+
+### Field of View (FOV)
+
+The viewfinder dynamically adjusts its FOV based on zoom level:
+
+- **Base FOV**: 70 degrees (matches Minecraft's default)
+- **Zoom calculation**: FOV decreases as zoom increases
+- **Maximum zoom**: Creates a spyglass-like effect at 1/5 normal FOV
+
+### Near Plane Rendering
+
+The camera uses a near plane value of `0.05` blocks, allowing it to capture objects very close to the lens without clipping.
+
+### Adding Filters
+
+You can modify the viewfinder's output by inserting items:
+
+- **Stained Glass Panes**: Add color tinting to the camera feed
+- **Supplementaries Shaders** (if installed): Apply special visual effects
+
+<Steps>
+  <Step title="Sneak + Right-Click">
+    Hold shift and right-click the viewfinder with an empty hand or compatible item.
+  </Step>
+  
+  <Step title="Insert Filter">
+    Place a stained glass pane or shader item into the viewfinder.
+  </Step>
+  
+  <Step title="View Effect">
+    The camera feed will now display with the applied filter.
+  </Step>
+</Steps>
+
+## Best Practices
+
+### Strategic Camera Placement
+
+1. **Mob Farms**: Monitor spawning rates and collection systems
+2. **Base Entrances**: Security cameras for your front door
+3. **Redstone Contraptions**: Watch complex machinery in action
+4. **Scenic Views**: Capture beautiful landscapes or builds
+5. **Event Spaces**: Cover arenas, theaters, or gathering areas
+
+### Multiple Camera Setups
+
+Each viewfinder has a unique UUID (stored in NBT data at `ViewFinderBlockEntity.java:43`) that identifies it in the broadcast system. You can set up as many cameras as you need:
+
+- Create different cameras for different areas
+- Switch between feeds by changing cassettes in your TV
+- Build a security room with multiple TVs showing different locations
+
+### Performance Considerations
+
+Viewfinders are relatively lightweight:
+
+- The block entity stores only position data (yaw, pitch, zoom)
+- Video processing happens on the client side
+- Server performance impact is minimal
+
+<Note>
+  Viewfinders tick only to smoothly interpolate rotation values (see `ViewFinderBlockEntity.java:73`), making them efficient for always-on camera systems.
+</Note>
+
+## Troubleshooting
+
+### Camera Won't Move
+
+- Check if the camera is locked
+- Ensure you have permission to interact with the block
+- Verify you're in control mode (right-clicked the viewfinder)
+
+### Feed Not Updating
+
+- Ensure the viewfinder is in a loaded chunk
+- Check that the TV is properly linked (see [Linking Feeds](/guides/linking-feeds))
+- Verify the dimension matches (cameras and TVs must be in the same dimension)
+
+### Can't Insert Filters
+
+- Hold shift while right-clicking
+- Ensure you're using a compatible item (stained glass panes)
+- Remove existing filters before inserting new ones

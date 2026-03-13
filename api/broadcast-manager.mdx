@@ -1,0 +1,276 @@
+---
+title: BroadcastManager
+description: API reference for managing broadcast feeds and UUID-based feed tracking
+---
+
+## Overview
+
+`BroadcastManager` is a singleton class that manages the mapping between feed UUIDs and broadcast locations. It provides thread-safe operations for linking/unlinking feeds and retrieving broadcast sources.
+
+**Package:** `net.mehvahdjukaar.vista.common.broadcast`
+
+**Extends:** `WorldSavedData`
+
+## Getting the Instance
+
+<ParamField path="level" type="Level" required>
+  The world level to get the BroadcastManager for
+</ParamField>
+
+```java
+BroadcastManager manager = BroadcastManager.getInstance(level);
+```
+
+## Public API Methods
+
+### Write Operations
+
+These methods modify the feed mappings and automatically handle persistence and synchronization.
+
+#### linkFeed
+
+```java
+public void linkFeed(UUID feedUUID, IBroadcastLocation projectorPos)
+```
+
+Links a feed UUID to a broadcast location. If the feed already exists, it updates the location. This operation is thread-safe and will mark the data as dirty and sync to clients.
+
+<ParamField path="feedUUID" type="UUID" required>
+  The unique identifier for the feed
+</ParamField>
+
+<ParamField path="projectorPos" type="IBroadcastLocation" required>
+  The location of the broadcast source (e.g., a ViewFinder block entity)
+</ParamField>
+
+**Example:**
+
+```java
+BroadcastManager manager = BroadcastManager.getInstance(serverLevel);
+LevelBELocation location = LevelBELocation.of(level, blockPos);
+manager.linkFeed(viewFinderUUID, location);
+```
+
+#### unlinkFeed (by Location)
+
+```java
+public void unlinkFeed(IBroadcastLocation projectorPos)
+```
+
+Removes the feed link at the specified location. This is useful when a broadcast source is removed from the world.
+
+<ParamField path="projectorPos" type="IBroadcastLocation" required>
+  The location to unlink
+</ParamField>
+
+**Example:**
+
+```java
+LevelBELocation location = LevelBELocation.of(level, blockPos);
+manager.unlinkFeed(location);
+```
+
+#### unlinkFeed (by UUID)
+
+```java
+public void unlinkFeed(UUID feedUUID)
+```
+
+Removes the feed link with the specified UUID.
+
+<ParamField path="feedUUID" type="UUID" required>
+  The feed UUID to unlink
+</ParamField>
+
+**Example:**
+
+```java
+manager.unlinkFeed(viewFinderUUID);
+```
+
+### Read Operations
+
+These methods are optimized for fast, concurrent reads using a snapshot-based approach.
+
+#### getFeedLocationById
+
+```java
+@Nullable
+public IBroadcastLocation getFeedLocationById(UUID viewFinderUUID)
+```
+
+Retrieves the broadcast location associated with a feed UUID.
+
+<ParamField path="viewFinderUUID" type="UUID" required>
+  The feed UUID to look up
+</ParamField>
+
+<ResponseField name="return" type="IBroadcastLocation | null">
+  The broadcast location, or null if not found
+</ResponseField>
+
+**Example:**
+
+```java
+IBroadcastLocation location = manager.getFeedLocationById(uuid);
+if (location != null) {
+    // Use the location
+}
+```
+
+#### getIdOfFeedAt
+
+```java
+@Nullable
+public UUID getIdOfFeedAt(IBroadcastLocation from)
+```
+
+Retrieves the feed UUID at the specified location.
+
+<ParamField path="from" type="IBroadcastLocation" required>
+  The location to query
+</ParamField>
+
+<ResponseField name="return" type="UUID | null">
+  The feed UUID at this location, or null if not found
+</ResponseField>
+
+**Example:**
+
+```java
+LevelBELocation location = LevelBELocation.of(level, blockPos);
+UUID feedId = manager.getIdOfFeedAt(location);
+```
+
+#### getBroadcast
+
+```java
+@Nullable
+public IBroadcastSource getBroadcast(@NotNull UUID feedId, boolean clientSide)
+```
+
+Retrieves the actual broadcast source for a feed ID. This method validates that the source still exists and automatically unlinks invalid feeds on the server side.
+
+<ParamField path="feedId" type="UUID" required>
+  The feed UUID to retrieve
+</ParamField>
+
+<ParamField path="clientSide" type="boolean" required>
+  Whether this is being called on the client side. Set to `true` for client, `false` for server
+</ParamField>
+
+<ResponseField name="return" type="IBroadcastSource | null">
+  The broadcast source, or null if not found or invalid
+</ResponseField>
+
+<Note>
+  When called on the server (`clientSide = false`), this method will automatically unlink feeds that are no longer valid.
+</Note>
+
+**Example:**
+
+<CodeGroup>
+
+```java Server Side
+BroadcastManager manager = BroadcastManager.getInstance(serverLevel);
+IBroadcastSource source = manager.getBroadcast(feedUUID, false);
+if (source != null) {
+    IVideoSource video = source.getBroadcastVideo();
+}
+```
+
+```java Client Side
+BroadcastManager manager = BroadcastManager.getInstance(clientLevel);
+IBroadcastSource source = manager.getBroadcast(feedUUID, true);
+if (source != null) {
+    // Render the broadcast
+}
+```
+
+</CodeGroup>
+
+#### getAll
+
+```java
+public Iterable<Map.Entry<UUID, IBroadcastLocation>> getAll()
+```
+
+Returns all feed mappings. Useful for iteration or debugging.
+
+<ResponseField name="return" type="Iterable<Map.Entry<UUID, IBroadcastLocation>>">
+  All feed UUID to location mappings
+</ResponseField>
+
+**Example:**
+
+```java
+for (var entry : manager.getAll()) {
+    UUID feedId = entry.getKey();
+    IBroadcastLocation location = entry.getValue();
+    // Process each feed
+}
+```
+
+## Thread Safety
+
+The `BroadcastManager` uses a snapshot-based approach for thread safety:
+
+- **Write operations** are synchronized and update both the internal map and a snapshot
+- **Read operations** access the immutable snapshot without locking, ensuring fast concurrent reads
+- All modifications automatically trigger persistence and client synchronization
+
+## Serialization
+
+The manager provides both Codec and StreamCodec implementations for:
+
+- **Disk persistence** using Minecraft's world saved data system
+- **Network synchronization** between server and client
+
+```java
+public static final Codec<BroadcastManager> CODEC
+public static final StreamCodec<RegistryFriendlyByteBuf, BroadcastManager> STREAM_CODEC
+```
+
+## Complete Usage Example
+
+```java
+public class ViewFinderBlockEntity extends BlockEntity implements IBroadcastSource {
+    private UUID uuid = UUID.randomUUID();
+    
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        if (level instanceof ServerLevel serverLevel) {
+            // Link this ViewFinder to the broadcast network
+            BroadcastManager manager = BroadcastManager.getInstance(serverLevel);
+            LevelBELocation location = LevelBELocation.of(this);
+            manager.linkFeed(uuid, location);
+        }
+    }
+    
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        if (level instanceof ServerLevel serverLevel) {
+            // Unlink when removed
+            BroadcastManager manager = BroadcastManager.getInstance(serverLevel);
+            manager.unlinkFeed(uuid);
+        }
+    }
+    
+    @Override
+    public UUID getUUID() {
+        return uuid;
+    }
+    
+    @Override
+    public IVideoSource getBroadcastVideo() {
+        return new LiveFeedVideoSource(this);
+    }
+}
+```
+
+## See Also
+
+- [BroadcastLocationType](/api/location-types) - Location type system for broadcasts
+- [Video Sources](/api/video-sources) - Video source implementations including BroadcastVideoSource

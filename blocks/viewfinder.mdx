@@ -1,0 +1,380 @@
+---
+title: Viewfinder
+description: A camera block that broadcasts live video feeds to hollow cassettes
+---
+
+The **Viewfinder** is a rotatable camera block that captures live video feeds. Players can control its orientation to view different areas, and it can broadcast to linked hollow cassettes.
+
+## Overview
+
+Viewfinders act as security cameras or broadcast sources. They can be placed on any block face, rotated with full pitch and yaw control, and linked to hollow cassettes for remote viewing.
+
+## Block Properties
+
+<ParamField path="facing" type="Direction" default="UP">
+  The face of the block the viewfinder is attached to (UP, DOWN, NORTH, SOUTH, EAST, or WEST)
+</ParamField>
+
+<ParamField path="rotate_tile" type="Rotation" default="NONE">
+  The tile rotation state when placed on horizontal surfaces:
+  - `NONE` - No rotation (0°)
+  - `CLOCKWISE_90` - 90° clockwise
+  - `CLOCKWISE_180` - 180°
+  - `COUNTERCLOCKWISE_90` - 270° clockwise (90° counter-clockwise)
+</ParamField>
+
+## Block Entity Data
+
+The ViewFinder stores several pieces of data:
+
+<Accordion title="Camera Orientation">
+  ```java
+  // From ViewFinderBlockEntity.java:45-48
+  private float pitch = 0;      // Vertical angle (-90 to +90)
+  private float prevPitch = 0;  // For smooth interpolation
+  private float yaw = 0;        // Horizontal angle
+  private float prevYaw = 0;    // For smooth interpolation
+  ```
+  
+  The camera smoothly interpolates between previous and current angles for fluid rendering.
+</Accordion>
+
+<Accordion title="Zoom and Lock">
+  ```java
+  // From ViewFinderBlockEntity.java:50-51
+  private int zoom = 1;         // Zoom level (1-44)
+  private boolean locked = false; // Prevents further adjustments
+  ```
+  
+  - **Zoom range**: 1 (wide) to 44 (maximum magnification)
+  - **Locked state**: When locked, the camera cannot be moved
+</Accordion>
+
+<Accordion title="UUID and Broadcasting">
+  ```java
+  // From ViewFinderBlockEntity.java:43
+  private UUID myUUID;
+  ```
+  
+  Each viewfinder has a unique UUID for linking with hollow cassettes. The video feed is accessed via `getBroadcastVideo()`.
+</Accordion>
+
+## Placement
+
+### Basic Placement
+
+1. Place the viewfinder on any block face by clicking that face
+2. The viewfinder attaches to the clicked face
+3. Initial orientation is calculated based on player position
+
+```java
+// From ViewFinderBlock.java:125-128
+public BlockState getStateForPlacement(BlockPlaceContext context) {
+    return this.defaultBlockState()
+            .setValue(FACING, context.getClickedFace());
+}
+```
+
+### Auto-Orientation
+
+When placed, the viewfinder automatically aims based on the placer's position:
+
+```java
+// From ViewFinderBlock.java:84-98
+public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
+    if (placer != null && level.getBlockEntity(pos) instanceof ViewFinderBlockEntity cannon) {
+        Direction dir = Direction.orderedByNearest(placer)[0];
+        Direction myDir = state.getValue(FACING).getOpposite();
+        if (dir.getAxis() == Direction.Axis.Y) {
+            float pitch = dir == Direction.UP ? -90 : 90;
+            cannon.setPitch(access, (myDir.getOpposite() == dir ? pitch + 180 : pitch));
+        } else {
+            float yaw = dir.toYRot();
+            cannon.setYaw(access, (myDir.getOpposite() == dir ? yaw + 180 : yaw));
+        }
+    }
+}
+```
+
+<Note>
+  The viewfinder initially points toward the direction the player placed it from.
+</Note>
+
+## Rotation and Control
+
+### Manual Rotation
+
+Viewfinders implement `IRotatable` and `IAnalogRotatable` for manual adjustment:
+
+<Tabs>
+  <Tab title="Wrench Rotation">
+    Using a wrench or similar tool that triggers rotation:
+    
+    ```java
+    // From ViewFinderBlock.java:192-204
+    public void onRotated(BlockState newState, BlockState oldState, LevelAccessor world, BlockPos pos, 
+                         Rotation rotation, Direction axis, @Nullable Vec3 hit) {
+        if (axis.getAxis() == newState.getValue(FACING).getAxis() && 
+            world.getBlockEntity(pos) instanceof ViewFinderBlockEntity tile) {
+            float angle = rotation.rotate(0, 4) * -90;
+            Vector3f currentDir = tile.selfAccess.getGlobalFacing(0).toVector3f();
+            Quaternionf q = new Quaternionf().rotateAxis(angle * Mth.DEG_TO_RAD, axis.step());
+            currentDir.rotate(q);
+            Vec3 newDir = new Vec3(currentDir);
+            tile.setYaw(tile.selfAccess, (float) MthUtils.getYaw(newDir));
+            tile.setPitch(tile.selfAccess, (float) MthUtils.getPitch(newDir));
+        }
+    }
+    ```
+    
+    Rotating the block around its attachment axis rotates the camera view accordingly.
+  </Tab>
+  
+  <Tab title="Analog Rotation">
+    For smooth, continuous rotation (e.g., Create mod rotational power):
+    
+    ```java
+    // From ViewFinderBlock.java:209-223
+    public void rotateAnalog(BlockState state, Level level, BlockPos pos, 
+                            Direction face, boolean ccw, float speed) {
+        if (level.getBlockEntity(pos) instanceof ViewFinderBlockEntity tile) {
+            speed = speed * 0.01f;
+            float deltaAngle = -speed * (ccw ? -1 : 1);
+            Vector3f rotAxis = face.step();
+            Vector3f facingVec = tile.selfAccess.getGlobalFacing(0).toVector3f();
+            Quaternionf q = new Quaternionf().rotateAxis(deltaAngle, rotAxis);
+            facingVec.rotate(q);
+            Vec3 newDir = new Vec3(facingVec);
+            tile.selfAccess.setGlobalFacing(newDir, true);
+        }
+    }
+    ```
+    
+    <Warning>
+      Analog rotation only works when the rotation axis is perpendicular to the attachment face.
+    </Warning>
+  </Tab>
+  
+  <Tab title="Player Control">
+    Right-click the viewfinder to enter control mode:
+    
+    ```java
+    // From ViewFinderBlockEntity.java:136-142
+    if (player instanceof ServerPlayer sp && this.canBeUsedBy(pos, player)) {
+        this.setCurrentUser(player.getUUID());
+        NetworkHelper.sendToClientPlayer(sp, new ClientBoundControlViewFinderPacket(TileOrEntityTarget.of(this)));
+    }
+    ```
+    
+    Controls:
+    - **Mouse**: Adjust pitch and yaw
+    - **Scroll**: Adjust zoom level
+    - **Key** (configurable): Lock/unlock camera
+    - **Dismount key**: Exit control mode
+  </Tab>
+</Tabs>
+
+## Camera Properties
+
+### Field of View
+
+The FOV dynamically adjusts based on zoom level:
+
+```java
+// From ViewFinderBlockEntity.java:231-246
+public float getFOV() {
+    return BASE_FOV * getFOVModifier();
+}
+
+public float getFOVModifier() {
+    float spyglassZoom = 0.1f;
+    float maxZoom = spyglassZoom / 5;  // 0.02
+    float normalizedZoom = getNormalizedZoomFactor();
+    return Mth.lerp(normalizedZoom, 1, maxZoom);
+}
+
+public float getNormalizedZoomFactor() {
+    float normalizedZoom = (this.getZoomLevel() - 1f) / (ViewFinderBlockEntity.MAX_ZOOM - 1f);
+    normalizedZoom = 1 - ((1 - normalizedZoom) * (1 - normalizedZoom)); // easing
+    return normalizedZoom;
+}
+```
+
+<ParamField path="BASE_FOV" type="float" default="70">
+  Base field of view at zoom level 1
+</ParamField>
+
+<ParamField path="MAX_ZOOM" type="int" default="44">
+  Maximum zoom level (highest magnification)
+</ParamField>
+
+<ParamField path="NEAR_PLANE" type="float" default="0.05">
+  Near clipping plane distance for rendering
+</ParamField>
+
+### Zoom Levels
+
+- **Zoom 1**: 70° FOV (normal view)
+- **Zoom 44**: 1.4° FOV (50x magnification, like a telescope)
+
+The zoom uses quadratic easing for smooth magnification transitions.
+
+## Item Filters
+
+Viewfinders can hold stained glass panes or shaders as filters:
+
+```java
+// From ViewFinderBlockEntity.java:117-120
+public boolean canPlaceItem(int index, ItemStack stack) {
+    return this.isEmpty() && (stack.getItem() instanceof BlockItem bi && bi.getBlock() instanceof StainedGlassPaneBlock) ||
+            (CompatHandler.SUPPLEMENTARIES && SuppCompat.getShaderForItem(stack.getItem()) != null);
+}
+```
+
+### Adding Filters
+
+<Tabs>
+  <Tab title="Glass Pane Filters">
+    1. Hold a stained glass pane item
+    2. Shift + right-click the viewfinder
+    3. The glass pane is consumed and applies a color tint to the feed
+  </Tab>
+  
+  <Tab title="Supplementaries Shaders">
+    If Supplementaries is installed:
+    1. Hold a lens/shader item
+    2. Shift + right-click the viewfinder
+    3. The shader effect applies to the video feed
+    
+    <Note>
+      Requires Supplementaries mod compatibility.
+    </Note>
+  </Tab>
+  
+  <Tab title="Removing Filters">
+    1. Shift + right-click the viewfinder with an empty hand
+    2. The filter item drops
+    3. The feed returns to normal
+  </Tab>
+</Tabs>
+
+## Broadcasting
+
+Viewfinders broadcast their video feed via the `IBroadcastSource` interface:
+
+```java
+// From ViewFinderBlockEntity.java:69-71
+public @Nullable IVideoSource getBroadcastVideo() {
+    return this.videoSource;
+}
+```
+
+### Linking Process
+
+1. Place a viewfinder
+2. Right-click with a hollow cassette
+3. The cassette links to the viewfinder's UUID
+4. Insert the linked cassette into a TV to view the feed
+
+<Warning>
+  When a viewfinder is broken, it unlinks from the broadcast manager:
+  
+  ```java
+  // From ViewFinderBlock.java:131-138
+  protected void onRemove(BlockState oldState, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
+      if (oldState.getBlock() == this && newState.getBlock() != this &&
+              level instanceof ServerLevel sl) {
+          BroadcastManager.getInstance(sl).unlinkFeed(LevelBELocation.of(level, pos));
+      }
+  }
+  ```
+</Warning>
+
+## Rendering
+
+Viewfinders use animated entity block rendering:
+
+```java
+// From ViewFinderBlock.java:146-148
+public RenderShape getRenderShape(BlockState state) {
+    return RenderShape.ENTITYBLOCK_ANIMATED;
+}
+```
+
+### Collision Shape
+
+When a player is actively controlling the viewfinder, the collision shape becomes empty:
+
+```java
+// From ViewFinderBlock.java:176-181
+protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+    if (PlatHelper.getPhysicalSide().isClient() && ViewFinderController.isActiveAt(pos)) {
+        return Shapes.empty();
+    }
+    return Shapes.block();
+}
+```
+
+This prevents the player's camera from clipping through the block during first-person control.
+
+## Integration
+
+### ComputerCraft
+
+Viewfinders expose a peripheral for programmatic control:
+
+```java
+// From ViewFinderBlockEntity.java:41
+public Object ccPeripheral = null;
+```
+
+<Note>
+  With ComputerCraft installed, you can control viewfinder rotation, zoom, and lock state via Lua scripts.
+</Note>
+
+### Supplementaries
+
+Supports wrench rotation and shader lenses (see Rotation and Item Filters sections).
+
+## NBT Data Structure
+
+Viewfinder data saved to NBT:
+
+```java
+// From ViewFinderBlockEntity.java:102-109
+public void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
+    super.saveAdditional(tag, registries);
+    tag.putUUID("UUID", this.myUUID);
+    tag.putFloat("yaw", this.yaw);
+    tag.putFloat("pitch", this.pitch);
+    tag.putBoolean("locked", this.locked);
+    tag.putInt("zoom", this.zoom);
+}
+```
+
+<ParamField path="UUID" type="UUID">
+  Unique identifier for broadcast linking
+</ParamField>
+
+<ParamField path="yaw" type="float">
+  Horizontal rotation angle
+</ParamField>
+
+<ParamField path="pitch" type="float">
+  Vertical rotation angle
+</ParamField>
+
+<ParamField path="locked" type="boolean">
+  Whether the camera is locked
+</ParamField>
+
+<ParamField path="zoom" type="int">
+  Current zoom level (1-44)
+</ParamField>
+
+## Use Cases
+
+- **Security Systems**: Monitor distant areas from a central control room
+- **Cinematic Recording**: Create dynamic camera angles for videos
+- **Exploration**: Scout dangerous areas without risk
+- **Automation**: Use with ComputerCraft for automated surveillance

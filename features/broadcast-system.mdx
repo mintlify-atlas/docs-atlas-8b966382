@@ -1,0 +1,472 @@
+---
+title: Broadcast & Feed System
+description: UUID-based feed linking between viewfinders and TVs across dimensions
+---
+
+## Overview
+
+Vista's broadcast system enables **viewfinders** to stream live camera feeds to **TVs** anywhere in the world, even across dimensions. The system uses UUID-based feed tracking and a centralized broadcast manager.
+
+## Architecture
+
+The broadcast system consists of three main components:
+
+1. **BroadcastManager** - World-saved data that tracks all active feeds
+2. **IBroadcastLocation** - Represents where a broadcast source is located
+3. **IBroadcastSource** - The actual content provider (viewfinder, camera, etc.)
+
+## BroadcastManager
+
+The `BroadcastManager` is a world-saved data structure that maintains a bidirectional mapping between feed UUIDs and broadcast locations.
+
+### Core Data Structure
+
+```java BroadcastManager.java:60
+private final Object lock = new Object();
+private final HashBiMap<UUID, IBroadcastLocation> uuidToPos = HashBiMap.create();
+private volatile Map<UUID, IBroadcastLocation> snapshot = Map.of();
+```
+
+<Info>
+The manager uses a **BiMap** for efficient bidirectional lookups and a **snapshot** for fast, lock-free reads.
+</Info>
+
+### Thread Safety
+
+The broadcast manager is designed for concurrent access:
+
+- **Write operations** are synchronized and update both the BiMap and snapshot
+- **Read operations** use the immutable snapshot without locking
+- **Snapshot publishing** creates a new immutable copy after each write
+
+```java BroadcastManager.java:69
+private void publishSnapshot() {
+    snapshot = Map.copyOf(uuidToPos);
+}
+```
+
+### Getting the Manager
+
+```java BroadcastManager.java:187
+public static BroadcastManager getInstance(Level level) {
+    return VistaMod.VIEWFINDER_CONNECTION.getData(level);
+}
+```
+
+<Note>
+The BroadcastManager is a **server-side** world-saved data structure. It persists across server restarts.
+</Note>
+
+## Feed Linking
+
+### Linking a Feed
+
+When you use a hollow cassette with a viewfinder, it creates a link:
+
+```java BroadcastManager.java:90
+public void linkFeed(UUID feedUUID, IBroadcastLocation projectorPos) {
+    boolean changed = false;
+    
+    synchronized (lock) {
+        IBroadcastLocation old = uuidToPos.get(feedUUID);
+        if (!projectorPos.equals(old)) {
+            uuidToPos.forcePut(feedUUID, projectorPos);
+            publishSnapshot();
+            changed = true;
+        }
+    }
+    
+    if (changed) {
+        setDirty();
+        sync();
+    }
+}
+```
+
+<Steps>
+  <Step title="Craft a hollow cassette">
+    Empty cassettes can be linked to viewfinders
+  </Step>
+  
+  <Step title="Right-click a viewfinder">
+    This assigns a unique UUID to the cassette and links it to the viewfinder's location
+  </Step>
+  
+  <Step title="Insert cassette into TV">
+    The TV looks up the UUID in the BroadcastManager to find the feed source
+  </Step>
+  
+  <Step title="Live stream begins">
+    The TV renders what the viewfinder sees in real-time
+  </Step>
+</Steps>
+
+### Unlinking Feeds
+
+Feeds are automatically unlinked when the source is removed:
+
+```java BroadcastManager.java:109
+public void unlinkFeed(IBroadcastLocation projectorPos) {
+    boolean changed = false;
+    
+    synchronized (lock) {
+        UUID old = uuidToPos.inverse().remove(projectorPos);
+        if (old != null) {
+            publishSnapshot();
+            changed = true;
+        }
+    }
+    
+    if (changed) {
+        setDirty();
+        sync();
+    }
+}
+```
+
+You can also unlink by UUID:
+
+```java BroadcastManager.java:126
+public void unlinkFeed(UUID feedUUID) {
+    synchronized (lock) {
+        if (uuidToPos.remove(feedUUID) != null) {
+            publishSnapshot();
+            changed = true;
+        }
+    }
+}
+```
+
+## Broadcast Locations
+
+The `IBroadcastLocation` interface represents where a broadcast source exists in the world.
+
+### Interface Definition
+
+```java IBroadcastLocation.java
+public interface IBroadcastLocation {
+    TriResult<IBroadcastSource> get(boolean isClient);
+    BroadcastLocationType type();
+    MutableComponent getTooltipComponent(Level level);
+}
+```
+
+### TriResult Pattern
+
+The `get()` method returns a `TriResult` with three possible states:
+
+```java TriResult.java
+public class TriResult<T> {
+    public static <T> TriResult<T> valid(T value) { ... }    // Found and valid
+    public static <T> TriResult<T> invalid() { ... }         // Found but invalid
+    public static <T> TriResult<T> empty() { ... }           // Not found/not loaded
+}
+```
+
+<Accordion title="Why TriResult?">
+- **valid** - The broadcast source exists and is working
+- **invalid** - The source existed but is now broken (triggers cleanup)
+- **empty** - The chunk isn't loaded yet (no action needed)
+</Accordion>
+
+### LevelBELocation
+
+The default implementation for block entity-based broadcast sources:
+
+```java LevelBELocation.java:13
+public record LevelBELocation(GlobalPos globalPos) implements IBroadcastLocation {
+    
+    public static LevelBELocation of(Level level, BlockPos pos) {
+        return new LevelBELocation(GlobalPos.of(level.dimension(), pos));
+    }
+    
+    @Override
+    public TriResult<IBroadcastSource> get(boolean isClient) {
+        Level otherLevel = isClient
+                ? VistaModClient.getLocalLevelByDimension(globalPos.dimension())
+                : PlatHelper.getCurrentServer().getLevel(globalPos.dimension());
+        
+        if (otherLevel != null && otherLevel.isLoaded(globalPos.pos())) {
+            if (otherLevel.getBlockEntity(globalPos.pos()) instanceof IBroadcastSource provider) {
+                return TriResult.valid(provider);
+            } else if (!isClient) {
+                return TriResult.invalid();
+            }
+        }
+        return TriResult.empty();
+    }
+}
+```
+
+<Info>
+This implementation supports **cross-dimensional** broadcasts using `GlobalPos`, which stores both the dimension and block position.
+</Info>
+
+## Location Type Registry
+
+Broadcast locations are registered with a custom registry system:
+
+```java BroadcastLocationType.java
+public record BroadcastLocationType(
+    MapCodec<? extends IBroadcastLocation> codec,
+    StreamCodec<ByteBuf, ? extends IBroadcastLocation> streamCodec
+) {}
+```
+
+### Codec Support
+
+The system uses two codec types:
+
+1. **MapCodec** - For NBT serialization (world save data)
+2. **StreamCodec** - For network synchronization
+
+```java IBroadcastLocation.java:14
+Codec<IBroadcastLocation> CODEC = Codec.lazyInitialized(
+    () -> VistaMod.BROADCAST_LOCATION_REGISTRY.byNameCodec()
+        .dispatch(IBroadcastLocation::type, BroadcastLocationType::codec)
+);
+
+StreamCodec<RegistryFriendlyByteBuf, IBroadcastLocation> STREAM_CODEC =
+    ByteBufCodecs.registry(VistaMod.BROADCAST_LOCATION_REGISTRY.key())
+        .dispatch(IBroadcastLocation::type, BroadcastLocationType::streamCodec);
+```
+
+<Warning>
+Custom broadcast location types must be registered with the `BROADCAST_LOCATION_REGISTRY` before use.
+</Warning>
+
+## Network Synchronization
+
+The BroadcastManager is synchronized to clients:
+
+```java BroadcastManager.java:43
+public static final StreamCodec<RegistryFriendlyByteBuf, BroadcastManager> STREAM_CODEC =
+    ByteBufCodecs.map(
+        i -> new HashMap<>(),
+        UUIDUtil.STREAM_CODEC,
+        IBroadcastLocation.STREAM_CODEC
+    ).map(
+        map -> {
+            BroadcastManager storage = new BroadcastManager();
+            map.forEach((uuid, pos) -> storage.addFeedInternal(uuid, pos, true));
+            storage.publishSnapshot();
+            return storage;
+        },
+        storage -> new HashMap<>(storage.snapshot)
+    );
+```
+
+<Info>
+Clients receive a full snapshot of all broadcast feeds when they join or when changes occur.
+</Info>
+
+## Retrieving Broadcasts
+
+### By Feed UUID
+
+```java BroadcastManager.java:163
+@Nullable
+public IBroadcastSource getBroadcast(@NotNull UUID feedId, boolean clientSide) {
+    IBroadcastLocation pos = snapshot.get(feedId);
+    if (pos == null) return null;
+    
+    var result = pos.get(clientSide);
+    if (result.isValid()) {
+        return result.getValue();
+    } else {
+        if (!clientSide) {
+            unlinkFeed(feedId);  // Cleanup invalid feeds
+        }
+        return null;
+    }
+}
+```
+
+<Note>
+Invalid feeds are **automatically cleaned up** on the server side to prevent orphaned entries.
+</Note>
+
+### By Location
+
+```java BroadcastManager.java:149
+@Nullable
+public UUID getIdOfFeedAt(IBroadcastLocation from) {
+    for (var e : snapshot.entrySet()) {
+        if (e.getValue().equals(from)) {
+            return e.getKey();
+        }
+    }
+    return null;
+}
+```
+
+### Iterating All Feeds
+
+```java BroadcastManager.java:159
+public Iterable<Map.Entry<UUID, IBroadcastLocation>> getAll() {
+    return snapshot.entrySet();
+}
+```
+
+## UUID Assignment
+
+Feed UUIDs are stored on cassette items using a data component:
+
+```java
+var uuid = displayedItem.get(VistaMod.LINKED_FEED_COMPONENT.get());
+```
+
+This UUID persists with the cassette item, allowing you to:
+- Move cassettes between TVs
+- Store cassettes in chests
+- Trade cassettes with other players
+- Copy cassettes (if implemented)
+
+## Feed Tooltips
+
+Linked cassettes display location information:
+
+```java LevelBELocation.java:50
+@Override
+public MutableComponent getTooltipComponent(Level level) {
+    if (level.dimension() == globalPos.dimension()) {
+        BlockPos pos = globalPos.pos();
+        return Component.translatable("tooltip.vista.hollow_cassette.linked",
+                pos.getX(), pos.getY(), pos.getZ());
+    } else {
+        return Component.translatable("tooltip.vista.hollow_cassette.linked_away", 
+                globalPos.dimension());
+    }
+}
+```
+
+<Tip>
+Hover over a linked cassette to see the coordinates of its broadcast source, or the dimension name if it's in another dimension.
+</Tip>
+
+## Cross-Dimensional Broadcasting
+
+The system fully supports broadcasting across dimensions:
+
+```java LevelBELocation.java:29
+public TriResult<IBroadcastSource> get(boolean isClient) {
+    Level otherLevel = isClient
+            ? VistaModClient.getLocalLevelByDimension(globalPos.dimension())
+            : PlatHelper.getCurrentServer().getLevel(globalPos.dimension());
+    
+    if (otherLevel != null && otherLevel.isLoaded(globalPos.pos())) {
+        if (otherLevel.getBlockEntity(globalPos.pos()) instanceof IBroadcastSource provider) {
+            return TriResult.valid(provider);
+        }
+    }
+    return TriResult.empty();
+}
+```
+
+<Steps>
+  <Step title="Link viewfinder in the Overworld">
+    Create a hollow cassette and link it to a viewfinder
+  </Step>
+  
+  <Step title="Take cassette to the Nether">
+    The cassette retains its UUID link
+  </Step>
+  
+  <Step title="Insert into TV">
+    The TV retrieves the feed from the Overworld dimension
+  </Step>
+  
+  <Step title="View cross-dimensional stream">
+    Watch the Overworld feed from the Nether!
+  </Step>
+</Steps>
+
+<Warning>
+The source dimension must be **loaded** for the feed to work. If the dimension isn't loaded, the feed returns `TriResult.empty()` and shows no content.
+</Warning>
+
+## Persistence
+
+The BroadcastManager uses Mojang's Codec system for world data persistence:
+
+```java BroadcastManager.java:31
+public static final Codec<BroadcastManager> CODEC =
+    Codec.unboundedMap(UUIDUtil.STRING_CODEC, IBroadcastLocation.CODEC)
+        .xmap(
+            map -> {
+                BroadcastManager storage = new BroadcastManager();
+                map.forEach((uuid, pos) -> storage.addFeedInternal(uuid, pos, false));
+                storage.publishSnapshot();
+                return storage;
+            },
+            storage -> storage.snapshot
+        );
+```
+
+<Info>
+All feed links are saved to the world data and restored when the world is loaded.
+</Info>
+
+## Custom Broadcast Sources
+
+To create custom broadcast sources, implement `IBroadcastSource`:
+
+```java
+public interface IBroadcastSource {
+    // Your custom implementation
+}
+```
+
+Then create a custom location type:
+
+```java
+public record CustomLocation(...) implements IBroadcastLocation {
+    public static final BroadcastLocationType TYPE = new BroadcastLocationType(
+        // Your MapCodec
+        // Your StreamCodec
+    );
+    
+    @Override
+    public TriResult<IBroadcastSource> get(boolean isClient) {
+        // Your lookup logic
+    }
+}
+```
+
+Register it with the broadcast location registry:
+
+```java
+VistaMod.BROADCAST_LOCATION_REGISTRY.register("custom", CustomLocation.TYPE);
+```
+
+## Performance Considerations
+
+### Snapshot Pattern
+
+```java
+private volatile Map<UUID, IBroadcastLocation> snapshot = Map.of();
+```
+
+The snapshot pattern provides:
+- **Lock-free reads** for the common case
+- **Immutable snapshots** prevent concurrent modification
+- **Copy-on-write** semantics for updates
+
+<Tip>
+Reads are extremely fast since they don't require synchronization. Only writes are synchronized.
+</Tip>
+
+### Chunk Loading
+
+The system gracefully handles unloaded chunks:
+
+```java
+if (otherLevel != null && otherLevel.isLoaded(globalPos.pos())) {
+    // Only access if chunk is loaded
+}
+return TriResult.empty();  // Not loaded - don't force load
+```
+
+<Warning>
+The broadcast system **never forces chunk loading**. Feeds in unloaded chunks return `TriResult.empty()`.
+</Warning>

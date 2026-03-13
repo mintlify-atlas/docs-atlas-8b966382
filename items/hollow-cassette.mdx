@@ -1,0 +1,165 @@
+---
+title: Hollow Cassette
+description: Special cassette that displays live feeds from viewfinders
+icon: cassette-tape
+---
+
+Hollow Cassettes are special cassettes that can be linked to [Viewfinders](/blocks/viewfinder) to display live camera feeds on [Televisions](/blocks/television).
+
+## Overview
+
+Unlike regular [Cassette Tapes](/items/cassette-tapes) which play pre-recorded videos, Hollow Cassettes create a live connection to a Viewfinder, allowing you to broadcast what the viewfinder is seeing in real-time on any TV.
+
+<Card title="Key Features" icon="video">
+  - Link to viewfinders to create live camera feeds
+  - Display the viewfinder's view on any television
+  - Always provides maximum redstone signal (15)
+  - Shows the linked location in the tooltip
+  - Glows with enchantment effect when linked
+</Card>
+
+## Crafting
+
+<CodeGroup>
+```yaml Recipe
+Type: Shapeless Crafting
+Ingredients:
+  - 1x Cassette (any)
+  - 1x Echo Shard
+Result:
+  - 1x Hollow Cassette
+```
+</CodeGroup>
+
+To create a Hollow Cassette, combine any regular cassette with an Echo Shard in a crafting table. The cassette will be consumed and converted into a Hollow Cassette.
+
+<Note>
+You can use any regular cassette tape for this recipe - the video content doesn't matter as it will be replaced with the live feed.
+</Note>
+
+## Linking to a Viewfinder
+
+### Steps to Link
+
+1. **Place a [Viewfinder](/blocks/viewfinder)** in the location you want to broadcast from
+2. **Hold the Hollow Cassette** in your hand
+3. **Right-click on the Viewfinder** with the cassette
+4. The cassette will glow and display the linked coordinates in its tooltip
+
+<Tip>
+Once linked, the Hollow Cassette will display a glowing enchantment effect and show the viewfinder's coordinates when you hover over it.
+</Tip>
+
+### Viewing the Feed
+
+1. Take your linked Hollow Cassette to any [Television](/blocks/television)
+2. Power the TV with redstone
+3. Right-click the TV with the Hollow Cassette to insert it
+4. The TV will now display the live feed from the linked Viewfinder
+
+<Warning>
+The Viewfinder must be in a loaded chunk for the feed to display. If the viewfinder's chunk is unloaded, the feed will not be available.
+</Warning>
+
+## Tooltip Information
+
+Hollow Cassettes display helpful information in their tooltip:
+
+- **When linked**: Shows the exact coordinates `[X, Y, Z]` of the linked viewfinder
+- **When linked (far away)**: Shows the dimension name if in a different dimension
+- **When invalid**: Shows "Linked to invalid location" if the viewfinder was removed or is in an unloaded chunk
+
+## Redstone Output
+
+Hollow Cassettes always provide the maximum comparator signal strength of **15** when inserted into a TV, regardless of whether they're linked or not. This is the highest signal strength of any cassette type, making them useful for redstone contraptions.
+
+<CodeGroup>
+```yaml Comparator Values
+Regular Cassettes: 1-11 (varies by cassette)
+Hollow Cassettes: 15 (always)
+```
+</CodeGroup>
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Security System" icon="shield">
+    Place viewfinders at entry points and monitor them from a central TV display.
+  </Card>
+
+  <Card title="Remote Monitoring" icon="binoculars">
+    Set up viewfinders in farms, bases, or mob spawners to check on them from anywhere.
+  </Card>
+
+  <Card title="Artistic Displays" icon="palette">
+    Create dynamic art installations with multiple TVs showing different viewfinder angles.
+  </Card>
+
+  <Card title="Event Broadcasting" icon="tower-broadcast">
+    Broadcast events or build tours to multiple TVs across your world.
+  </Card>
+</CardGroup>
+
+## Technical Details
+
+### Broadcast System
+
+Hollow Cassettes use the mod's broadcast system to create a connection between the viewfinder and the TV:
+
+1. Each Viewfinder has a unique UUID identifier
+2. When you link a Hollow Cassette, it stores the viewfinder's UUID
+3. When inserted into a TV, it looks up the viewfinder by UUID
+4. The TV renders the viewfinder's camera perspective in real-time
+
+### Cross-Dimensional Links
+
+Hollow Cassettes can be linked to viewfinders in different dimensions:
+
+- The link stores the global position (dimension + coordinates)
+- The tooltip will show the dimension name when viewing from another dimension
+- The feed will only work if the source dimension is loaded
+
+<Note>
+In multiplayer, the viewfinder's chunk needs to be in a loaded area (spawn chunks, force-loaded chunks, or near active players) for the feed to work.
+</Note>
+
+## Relinking Cassettes
+
+You can relink a Hollow Cassette to a different viewfinder at any time:
+
+1. Right-click a different Viewfinder with the linked Hollow Cassette
+2. The cassette will update to link to the new viewfinder
+3. The old link is replaced - you cannot link one cassette to multiple viewfinders
+
+<Tip>
+If you need multiple feeds, craft multiple Hollow Cassettes and link each one to a different viewfinder.
+</Tip>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Feed shows black screen">
+    - Ensure the viewfinder is in a loaded chunk
+    - Check that the viewfinder hasn't been removed
+    - Verify the TV is powered with redstone
+    - Try relinking the cassette to the viewfinder
+  </Accordion>
+
+  <Accordion title="Tooltip says 'invalid location'">
+    - The viewfinder may have been removed
+    - The chunk may be in an unloaded dimension
+    - Try relinking the cassette to a valid viewfinder
+  </Accordion>
+
+  <Accordion title="Can't link to viewfinder">
+    - Make sure you're right-clicking directly on the viewfinder block
+    - Ensure you're holding the Hollow Cassette in your hand
+    - Check that the viewfinder is properly placed
+  </Accordion>
+</AccordionGroup>
+
+## Related Items
+
+- [Cassette Tapes](/items/cassette-tapes) - Pre-recorded video cassettes
+- [Television](/blocks/television) - The block that displays cassette feeds
+- [Viewfinder](/blocks/viewfinder) - Creates broadcast sources for hollow cassettes

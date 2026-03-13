@@ -1,0 +1,491 @@
+---
+title: Visual Effects & Shaders
+description: CRT effects, NTSC codec simulation, and vintage TV shaders
+---
+
+## Overview
+
+Vista includes a comprehensive suite of visual effects to simulate authentic CRT television displays, including scan lines, phosphor trails, color distortion, and NTSC encoding artifacts.
+
+## CRT Overlay Effects
+
+The mod provides several overlay states for TVs:
+
+```java CrtOverlay.java
+public enum CrtOverlay {
+    NONE(VistaMod.res("missing")),
+    PAUSE(VistaModClient.PAUSE_OVERLAY),
+    PAUSE_PLAY(VistaModClient.PAUSE_PLAY_OVERLAY),
+    LOADING(VistaModClient.LOADING_OVERLAY),
+    DISCONNECT(VistaModClient.DISCONNECT_OVERLAY);
+    
+    public final ResourceLocation texture;
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="PAUSE" icon="pause">
+    Displayed when playback is paused
+  </Card>
+  <Card title="PAUSE_PLAY" icon="play">
+    Transition overlay when resuming
+  </Card>
+  <Card title="LOADING" icon="spinner">
+    Shown while content is loading
+  </Card>
+  <Card title="DISCONNECT" icon="plug">
+    Displayed when feed is unavailable
+  </Card>
+</CardGroup>
+
+## Shader System
+
+Vista uses Minecraft's shader system with custom GLSL shaders located in:
+
+```
+assets/vista/shaders/
+├── core/           # Core rendering shaders
+├── include/        # Shared GLSL functions
+├── post/           # Post-processing chains
+└── program/        # Individual shader programs
+```
+
+## CRT Effects Library
+
+The main effects library is `crt_effects.glsl`, which provides reusable functions:
+
+### Vignette Effect
+
+```glsl crt_effects.glsl:3
+float crt_vignette(in vec2 texCoord) {
+    vec2 minUV  = vec2(0,0);
+    vec2 sizeUV = vec2(1,1);
+    vec2 uvLocal = clamp((texCoord - minUV) / sizeUV, 0.0, 1.0);
+    
+    float v = 44.0 * (uvLocal.x * (1.0 - uvLocal.x) * uvLocal.y * (1.0 - uvLocal.y));
+    return 0.6 + 0.4 * v;
+}
+```
+
+<Info>
+The vignette darkens the edges of the screen to simulate the falloff on real CRT displays. The intensity can be configured.
+</Info>
+
+### Procedural Noise
+
+Golden-ratio based procedural noise for static:
+
+```glsl crt_effects.glsl:24
+#define PHI 1.61803398874989484820459
+#define NOISE_SPEED 1000.0
+#define NOISE_SCALE 10000.0
+
+float gold_noise(in vec2 xy, in float seed) {
+    return fract(tan(distance(xy * PHI, xy) * seed) * xy.x);
+}
+
+vec4 crt_noise(in vec2 uv, in float timeSeed) {
+    uv = uv * NOISE_SCALE;
+    timeSeed = fract(timeSeed * NOISE_SPEED);
+    return vec4(
+        gold_noise(uv, timeSeed + 0.1),
+        gold_noise(uv, timeSeed + 0.2),
+        gold_noise(uv, timeSeed + 0.3),
+        gold_noise(uv, timeSeed + 0.4)
+    );
+}
+```
+
+<Note>
+This deterministic noise function creates authentic TV static without requiring noise textures.
+</Note>
+
+### Turn On/Off Animation
+
+```glsl crt_effects.glsl:52
+vec4 crt_turn_on(vec4 inColor, vec2 fragPx, vec2 resolutionPx, float t) {
+    t = 1-t;  // Reverse for turn-off
+    
+    // Pixel lock for authentic blocky look
+    vec2 uv = ((floor(fragPx) + 0.5) / resolutionPx) - 0.5;
+    
+    // Ellipse animation
+    float r_y = mix(ryStart, ryEnd, animate(t, ryAnimStart, ryAnimDuration));
+    float r_x = mix(rxStart, rxEnd, animate(t, rxAnimStart, rxAnimDuration));
+    
+    // Center dot effect
+    float dotT = animate(t, dotStart, dotDuration);
+    if (dotT > 0.0) {
+        float s = sin(dotT * PI);
+        float radius = dotRadiusMax * s;
+        float dist = length(uv);
+        float dot = smoothstep(radius, 0.0, dist);
+        glow.rgb += dot;
+    }
+    
+    return mix(inColor, glow, fade);
+}
+```
+
+<Tip>
+This effect simulates the classic CRT turn-off animation where the image collapses to a horizontal line, then a center dot, then fades out.
+</Tip>
+
+### VHS Pause Effect
+
+```glsl crt_effects.glsl:133
+vec3 vcr_pause(
+    vec2 uv,
+    vec2 frameOriginUV,
+    vec2 spriteDimensions,
+    vec2 atlasSize,
+    float time,
+    vec2 tpp
+) {
+    vec2 localUV = (uv - frameOriginUV) / spriteDimensions;
+    
+    // Wobble based on sine wave
+    float phase = time * 2.0 * PI * VHS_WOBBLE_SINE_SPEED;
+    float sineValue = sin(localUV.y * 2.0 * PI / VHS_WOBBLE_WAVELENGTH + phase);
+    float gate = step(VHS_WOBBLE_SINE_THRESHOLD, sineValue);
+    
+    // Apply jitter
+    localUV.x += gate * (lineNoise - 0.5) * VHS_LINE_JITTER_AMPLITUDE;
+    localUV.y += (frameNoise - 0.5) * VHS_FRAME_JITTER_AMPLITUDE;
+    
+    return vec3(newUV, 0.02 * gate);
+}
+```
+
+<Accordion title="VHS Parameters">
+- `VHS_WOBBLE_WAVELENGTH` - 1.2 UV units (one sine wave per screen)
+- `VHS_WOBBLE_SINE_SPEED` - -400.0 (scroll speed)
+- `VHS_WOBBLE_SINE_THRESHOLD` - 0.9 (only high sine values wobble)
+- `VHS_LINE_JITTER_AMPLITUDE` - 0.016 (horizontal shake)
+- `VHS_FRAME_JITTER_AMPLITUDE` - 0.008 (vertical shake)
+</Accordion>
+
+## Static Noise Shader
+
+The static noise shader renders TV static when no signal is present:
+
+```glsl static_noise.fsh:30
+void main() {
+    // Get procedural noise
+    vec4 noise = crt_noise(texCoord0, GameTime);
+    
+    // Lighting / material tinting
+    vec4 tint = vertexColor * ColorModulator * lightMapColor;
+    vec4 shaded = NoiseIntensity * noise * tint;
+    
+    // Apply vignette
+    float vignette = mix(1.0, crt_vignette(texCoord0), 
+                         clamp(VignetteIntensity, 0.0, 1.0));
+    shaded.rgb *= vignette;
+    
+    // Fog
+    vec4 fogged = linear_fog(shaded, vertexDistance, FogStart, FogEnd, FogColor);
+    
+    fragColor = fogged;
+}
+```
+
+### Uniforms
+
+- `GameTime` - Animated time for noise variation
+- `NoiseIntensity` - How bright the static is (0-1)
+- `VignetteIntensity` - Vignette strength (0-1)
+
+## NTSC Codec Simulation
+
+Vista includes a full NTSC encoding/decoding pipeline to simulate color bleeding and artifacts from analog TV signals.
+
+### Post-Processing Chain
+
+```json ntsc_codec.json
+{
+    "targets": ["swap"],
+    "passes": [
+        {
+            "name": "vista:ntsc_encode",
+            "intarget": "minecraft:main",
+            "outtarget": "swap"
+        },
+        {
+            "name": "vista:ntsc_decode",
+            "intarget": "swap",
+            "outtarget": "minecraft:main"
+        }
+    ]
+}
+```
+
+### NTSC Encode
+
+```glsl ntsc_encode.fsh:26
+void main() {
+    // Sample 4 texels with subpixel offsets
+    vec4 Texel0 = texture(DiffuseSampler, C0);
+    vec4 Texel1 = texture(DiffuseSampler, C1);
+    vec4 Texel2 = texture(DiffuseSampler, C2);
+    vec4 Texel3 = texture(DiffuseSampler, C3);
+    
+    // Convert RGB to YIQ color space
+    vec4 Y = vec4(dot(Texel0, YTransform), dot(Texel1, YTransform), 
+                  dot(Texel2, YTransform), dot(Texel3, YTransform));
+    vec4 I = vec4(dot(Texel0, ITransform), dot(Texel1, ITransform), 
+                  dot(Texel2, ITransform), dot(Texel3, ITransform));
+    vec4 Q = vec4(dot(Texel0, QTransform), dot(Texel1, QTransform), 
+                  dot(Texel2, QTransform), dot(Texel3, QTransform));
+    
+    // Encode as composite signal
+    vec4 Encoded = Y + I * cos(TW) + Q * sin(TW);
+    fragColor = (Encoded - MinC) * InvCRange;
+}
+```
+
+<Info>
+NTSC uses the **YIQ color space** where Y is luminance, I is in-phase (orange-cyan), and Q is quadrature (green-magenta).
+</Info>
+
+### NTSC Decode
+
+The decoder uses windowed-sinc filters to extract Y, I, and Q channels:
+
+```glsl ntsc_decode.fsh:70
+for (float n = -41.0; n < 42.0; n += 4.0) {
+    vec4 n4 = n + NotchOffset;
+    vec4 CoordX = texCoord.x + oneTexel.x * n4 * 0.25;
+    vec2 TexCoord = vec2(CoordX.x, CoordY.y);
+    vec4 C = texture(DiffuseSampler, TexCoord) * CRange + MinC;
+    
+    // Hamming window
+    vec4 Cosine = 0.54 + 0.46 * cos(Pi2Length * n4);
+    
+    // Sinc filters for Y, I, Q
+    vec4 FilterY = Cosine * IdealY;
+    vec4 FilterI = Cosine * IdealI;
+    vec4 FilterQ = Cosine * IdealQ;
+    
+    YAccum += C * FilterY;
+    IAccum += C * cos(WT) * FilterI;
+    QAccum += C * sin(WT) * FilterQ;
+}
+
+// Convert YIQ back to RGB
+vec3 YIQ = vec3(Y, I, Q);
+vec3 OutRGB = vec3(dot(YIQ, YIQ2R), dot(YIQ, YIQ2G), dot(YIQ, YIQ2B));
+```
+
+<Warning>
+The NTSC codec is computationally expensive. It samples **83 texels** per output pixel to properly simulate analog signal filtering.
+</Warning>
+
+## Scan Lines & Pincushion
+
+The `scan_pincushion` shader adds CRT scan lines and geometric distortion:
+
+```glsl scan_pincushion.fsh:29
+void main() {
+    vec4 InTexel = texture(DiffuseSampler, texCoord);
+    
+    // Pincushion distortion
+    vec2 PinUnitCoord = texCoord * Two.xy - One.xy;
+    float PincushionR2 = pow(length(PinUnitCoord), 2.0);
+    vec2 PincushionCurve = PinUnitCoord * PincushionAmount * PincushionR2;
+    
+    vec2 ScanCoord = texCoord;
+    ScanCoord *= One.xy - PincushionAmount * 0.2;
+    ScanCoord += PincushionAmount * 0.1;
+    ScanCoord += PincushionCurve;
+    
+    // Scanline simulation
+    float InnerSine = ScanCoord.y * InSize.y * ScanlineScale * 0.25;
+    float ScanBrightMod = sin(InnerSine * Pi + ScanlineOffset * InSize.y * 0.25);
+    float ScanBrightness = mix(1.0, 
+        (pow(ScanBrightMod * ScanBrightMod, ScanlineHeight) * ScanlineBrightScale + 1.0) * 0.5, 
+        ScanlineAmount);
+    
+    vec3 ScanlineTexel = InTexel.rgb * ScanBrightness;
+    
+    // Color compression
+    ScanlineTexel = Floor + (One.xyz - Floor) * ScanlineTexel;
+    ScanlineTexel.rgb = pow(ScanlineTexel.rgb, Power);
+    
+    fragColor = vec4(ScanlineTexel.rgb, 1.0);
+}
+```
+
+### Parameters
+
+| Parameter | Value | Effect |
+|-----------|-------|--------|
+| `PincushionAmount` | 0.02 | Geometric curvature |
+| `ScanlineAmount` | 0.8 | Scan line intensity |
+| `ScanlineScale` | 1.0 | Scan line density |
+| `Floor` | vec3(0.05) | Black level |
+| `Power` | vec3(0.8) | Gamma correction |
+
+## Phosphor Trails
+
+The phosphor shader creates afterglow effects:
+
+```glsl phosphor.fsh:15
+void main() {
+    vec4 CurrTexel = texture(DiffuseSampler, texCoord);
+    vec4 PrevTexel = texture(PrevSampler, texCoord);
+    
+    fragColor = vec4(max(PrevTexel.rgb * Phosphor, CurrTexel.rgb), 1.0);
+}
+```
+
+<Info>
+This shader blends the previous frame with the current frame, simulating how CRT phosphors continue to glow after being excited by the electron beam.
+</Info>
+
+## Client Configuration
+
+Visual effects can be configured per-client:
+
+```java ClientConfigs.java:42
+SCREEN_EFFECTS = builder
+    .comment("Turns off all the tv screen effects and draws it as a simple texture.")
+    .define("screen_effects", true);
+
+PIXEL_DENSITY = builder
+    .comment("Pixel density of televisions, in pixels per block side")
+    .define("pixel_density", 1.37f, 0.1f, 10);
+
+SCALE_PIXELS = builder
+    .comment("Make connected tvs have higher pixel density")
+    .define("constant_pixel_density", true);
+
+VIGNETTE = builder
+    .comment("Amount of vignette effect (0 = none, 1 = full)")
+    .define("vignette", 1f, 0f, 1f);
+
+TURN_OFF_EFFECTS = builder
+    .comment("Plays an animation when the television is turned off or on")
+    .define("turn_off_animation", true);
+```
+
+<CardGroup cols={2}>
+  <Card title="screen_effects" icon="tv">
+    Master toggle for all visual effects
+  </Card>
+  <Card title="pixel_density" icon="grid">
+    Controls pixel scaling (1.37 default)
+  </Card>
+  <Card title="constant_pixel_density" icon="expand">
+    Scale larger TVs to maintain density
+  </Card>
+  <Card title="vignette" icon="circle-half-stroke">
+    Edge darkening strength
+  </Card>
+</CardGroup>
+
+## Turn On/Off Animation
+
+The turn on/off effect is controlled by the fade animation state:
+
+```java TVBlockEntity.java:186
+if (powered) {
+    if (!tv.paused) tv.videoPlaybackTicks++;
+} else {
+    tv.fadeAnimation.decrement();
+    tv.videoPlaybackTicks = 0;
+}
+
+if (world.isClientSide) {
+    if (powered) {
+        if (ClientConfigs.TURN_OFF_EFFECTS.get()) {
+            tv.fadeAnimation.increment();
+        }
+    }
+}
+```
+
+```java TVBlockEntity.java:239
+public boolean isScreenOn(float partialTicks) {
+    return this.wasScreenOn || this.fadeAnimation.getValue(partialTicks) != 0;
+}
+```
+
+<Steps>
+  <Step title="TV powered off">
+    fadeAnimation decrements from 9 to 0 over 3 ticks
+  </Step>
+  
+  <Step title="Shader receives animation value">
+    The `crt_turn_on` function creates the collapse effect
+  </Step>
+  
+  <Step title="Screen goes black">
+    Once fadeAnimation reaches 0, rendering stops
+  </Step>
+  
+  <Step title="TV powered on">
+    Process reverses - fadeAnimation increments back to 9
+  </Step>
+</Steps>
+
+## Performance Optimization
+
+### Resolution Scaling
+
+```java ClientConfigs.java:79
+RESOLUTION_SCALE = builder
+    .comment("Scale factor for live feed resolution")
+    .define("resolution_scale", 8, 1, 32);
+```
+
+Lower values reduce render quality but improve performance significantly.
+
+### Update Rate Throttling
+
+```java ClientConfigs.java:62
+UPDATE_FPS = builder
+    .comment("How many times per second the television updates its live feed texture")
+    .define("update_fps", 10.0, 0, 60);
+
+MIN_UPDATE_FPS = builder
+    .comment("The minimum update fps for live feed")
+    .define("min_update_fps", 4.0, 0, 60);
+
+THROTTLING_UPDATE_MS = builder
+    .comment("The maximum milliseconds all live feeds can take before throttling")
+    .define("throttling_update_ms", 16.66, 0, 1000000);
+```
+
+<Tip>
+Lowering `update_fps` from 10 to 5 can nearly double performance with minimal quality loss.
+</Tip>
+
+### Render Distance
+
+```java ClientConfigs.java:38
+RENDER_DISTANCE = builder
+    .comment("Render distance that television will use when rendering the live feed")
+    .define("render_distance", 64, 1, 256);
+
+UPDATE_DISTANCE = builder
+    .comment("Distance from a TV after which the feed will update in real time")
+    .define("update_distance", 20, 1, 512d);
+```
+
+<Warning>
+Reducing `render_distance` can dramatically improve performance, especially with multiple active TVs.
+</Warning>
+
+## Shader Customization
+
+All shaders are data-driven and can be modified via resource packs:
+
+1. Copy shaders from `assets/vista/shaders/`
+2. Modify GLSL code or JSON configurations
+3. Package in a resource pack
+4. Apply to client
+
+<Note>
+Custom shader packs can adjust scan line intensity, color grading, distortion amounts, and more without code changes.
+</Note>

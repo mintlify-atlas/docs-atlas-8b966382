@@ -1,0 +1,384 @@
+---
+title: Textures
+description: Texture management classes for video rendering
+---
+
+# Texture Management
+
+Vista's texture management system handles live feeds, cassette animations, and web-based video content.
+
+## LiveFeedTexturesManager
+
+Manages textures for live camera feeds from viewfinders.
+
+**Package**: `net.mehvahdjukaar.vista.client.textures`
+
+### Key Features
+
+- **Feed Registration**: Tracks active feeds by UUID
+- **Texture Caching**: Reuses textures for the same feed
+- **Update Scheduling**: Adaptive update rate based on screen size and distance
+- **Performance Tracking**: Monitors update times and frame rates
+
+### Static Fields
+
+<ParamField path="UPDATE_TIMES" type="Map<UUID, RollingBuffer<Long>>">
+  Stores update timestamps for each feed UUID for performance monitoring
+</ParamField>
+
+<ParamField path="SCHEDULER" type="Supplier<AdaptiveUpdateScheduler>">
+  Adaptive scheduler that adjusts update frequency based on performance
+</ParamField>
+
+### Usage Example
+
+```java
+UUID feedId = UUID.randomUUID();
+LiveFeedTexture texture = LiveFeedTexturesManager.getOrCreate(feedId, level, blockPos);
+
+// Texture will automatically update based on scheduler
+// Access performance metrics
+RollingBuffer<Long> updateTimes = LiveFeedTexturesManager.UPDATE_TIMES.get(feedId);
+double averageMs = LiveFeedTexturesManager.SCHEDULER.get().getAverageUpdateTimeMs();
+```
+
+## LiveFeedTexture
+
+Dynamic texture that renders a live feed from a viewfinder.
+
+**Package**: `net.mehvahdjukaar.vista.client.textures`
+
+**Extends**: `DynamicTexture`
+
+### Constructor
+
+<ParamField path="width" type="int" required>
+  Texture width in pixels
+</ParamField>
+
+<ParamField path="height" type="int" required>
+  Texture height in pixels
+</ParamField>
+
+### Key Methods
+
+<Accordion title="update(Level, BlockPos, Camera, int, int)">
+  Updates the texture with the latest camera feed.
+
+  <ParamField path="level" type="Level" required>
+    The level containing the camera
+  </ParamField>
+  <ParamField path="cameraPos" type="BlockPos" required>
+    Position of the viewfinder camera
+  </ParamField>
+  <ParamField path="mainCamera" type="Camera" required>
+    Main rendering camera
+  </ParamField>
+  <ParamField path="screenWidth" type="int" required>
+    Screen width in pixels
+  </ParamField>
+  <ParamField path="screenHeight" type="int" required>
+    Screen height in pixels
+  </ParamField>
+
+  This method:
+  - Renders the world from the viewfinder's perspective
+  - Applies FOV based on zoom level
+  - Captures the framebuffer
+  - Updates the texture pixels
+</Accordion>
+
+## CassetteTexturesManager
+
+Manages animated textures for cassette tapes.
+
+**Package**: `net.mehvahdjukaar.vista.client.textures`
+
+### Features
+
+- **Animation Loading**: Loads GIF and animated texture data
+- **Frame Management**: Handles multi-frame animations
+- **Texture Atlas**: Organizes cassette textures efficiently
+- **Resource Pack Support**: Reloads textures when resource packs change
+
+### Usage Example
+
+```java
+// Get animated texture for a cassette tape
+Holder<CassetteTape> tape = // ... cassette tape holder
+AnimatedStripTexture texture = CassetteTexturesManager.getTexture(tape);
+
+// Texture automatically animates based on game ticks
+int currentFrame = texture.getCurrentFrame(ticks);
+```
+
+## AnimatedStripTexture
+
+Texture for strip-based animations (cassette tapes).
+
+**Package**: `net.mehvahdjukaar.vista.client.textures`
+
+### Constructor
+
+<ParamField path="data" type="AnimationStripData" required>
+  Animation metadata (frame count, timing, dimensions)
+</ParamField>
+
+<ParamField path="resourceLocation" type="ResourceLocation" required>
+  Texture resource location
+</ParamField>
+
+### Methods
+
+<Accordion title="getCurrentFrame(int)">
+  Gets the current animation frame based on ticks.
+
+  <ParamField path="ticks" type="int" required>
+    Game ticks elapsed
+  </ParamField>
+
+  <ResponseField name="return" type="int">
+    Current frame index
+  </ResponseField>
+</Accordion>
+
+<Accordion title="getFrameUV(int)">
+  Gets UV coordinates for a specific frame.
+
+  <ParamField path="frame" type="int" required>
+    Frame index
+  </ParamField>
+
+  <ResponseField name="return" type="Vec2">
+    UV coordinates (u, v) for the frame in the strip
+  </ResponseField>
+</Accordion>
+
+## AnimationStripData
+
+Metadata for strip-based animations.
+
+**Package**: `net.mehvahdjukaar.vista.client.textures`
+
+### Record Fields
+
+<ParamField path="frames" type="int" required>
+  Number of frames in the animation
+</ParamField>
+
+<ParamField path="frametime" type="int" required>
+  Ticks per frame
+</ParamField>
+
+<ParamField path="width" type="int" required>
+  Width of each frame in pixels
+</ParamField>
+
+<ParamField path="height" type="int" required>
+  Height of each frame in pixels
+</ParamField>
+
+<ParamField path="interpolate" type="boolean">
+  Whether to interpolate between frames
+</ParamField>
+
+### Example
+
+```java
+AnimationStripData data = new AnimationStripData(
+    16,    // 16 frames
+    4,     // 4 ticks per frame
+    64,    // 64 pixels wide
+    64,    // 64 pixels high
+    false  // no interpolation
+);
+```
+
+## WebTexturesManager
+
+Manages textures loaded from web URLs.
+
+**Package**: `net.mehvahdjukaar.vista.client.textures`
+
+### Features
+
+- **URL Loading**: Downloads images from web URLs
+- **Caching**: Caches downloaded textures
+- **GIF Support**: Handles animated GIF files
+- **Error Handling**: Provides fallback textures on failure
+
+<Warning>
+  Web texture loading requires appropriate server permissions and may have performance implications. Use with caution.
+</Warning>
+
+### Usage Example
+
+```java
+String url = "https://example.com/video.gif";
+WebTexture texture = WebTexturesManager.getOrLoad(url);
+
+if (texture.isReady()) {
+    // Texture has finished loading
+    ResourceLocation textureLocation = texture.getLocation();
+}
+```
+
+## WebTexture
+
+Texture loaded from a web URL.
+
+**Package**: `net.mehvahdjukaar.vista.client.textures`
+
+### Constructor
+
+<ParamField path="url" type="String" required>
+  Web URL to load the texture from
+</ParamField>
+
+### Methods
+
+<Accordion title="isReady()">
+  Checks if the texture has finished loading.
+
+  <ResponseField name="return" type="boolean">
+    True if texture is ready for use
+  </ResponseField>
+</Accordion>
+
+<Accordion title="getLocation()">
+  Gets the resource location for the loaded texture.
+
+  <ResponseField name="return" type="ResourceLocation">
+    Texture resource location
+  </ResponseField>
+</Accordion>
+
+## GifPathSpriteSource
+
+Sprite source for loading GIF files from resource packs.
+
+**Package**: `net.mehvahdjukaar.vista.client.textures`
+
+**Implements**: `SpriteSource`
+
+### Features
+
+- Loads GIF files from resource pack paths
+- Extracts frames and timing information
+- Integrates with Minecraft's texture atlas system
+
+### JSON Format
+
+```json gif_sprite.json
+{
+  "type": "vista:gif_path",
+  "path": "vista:textures/cassette/animation.gif"
+}
+```
+
+## TvScreenVertexConsumers
+
+Utility class for creating vertex consumers for TV screen rendering.
+
+**Package**: `net.mehvahdjukaar.vista.client.textures`
+
+### Methods
+
+<Accordion title="createScreenConsumer(MultiBufferSource, ResourceLocation, int, int, IntAnimationState, IntAnimationState)">
+  Creates a vertex consumer for rendering TV screen content.
+
+  <ParamField path="buffer" type="MultiBufferSource" required>
+    Buffer source for rendering
+  </ParamField>
+  <ParamField path="texture" type="ResourceLocation" required>
+    Texture to render
+  </ParamField>
+  <ParamField path="screenSize" type="int" required>
+    Screen size in pixels
+  </ParamField>
+  <ParamField path="pixelEffectRes" type="int" required>
+    Pixel effect resolution
+  </ParamField>
+  <ParamField path="switchAnim" type="IntAnimationState" required>
+    Screen switch animation state
+  </ParamField>
+  <ParamField path="staticAnim" type="IntAnimationState" required>
+    Static noise animation state
+  </ParamField>
+
+  <ResponseField name="return" type="VertexConsumer">
+    Configured vertex consumer with effects
+  </ResponseField>
+</Accordion>
+
+## AnimatedStripVertexConsumer
+
+Vertex consumer wrapper that applies frame-based UV coordinates for animated strips.
+
+**Package**: `net.mehvahdjukaar.vista.client.textures`
+
+### Constructor
+
+<ParamField path="delegate" type="VertexConsumer" required>
+  Underlying vertex consumer
+</ParamField>
+
+<ParamField path="texture" type="AnimatedStripTexture" required>
+  Animated strip texture
+</ParamField>
+
+<ParamField path="ticks" type="int" required>
+  Current game ticks for animation
+</ParamField>
+
+### Usage
+
+```java
+AnimatedStripTexture animTexture = // ... get animated texture
+VertexConsumer baseConsumer = buffer.getBuffer(renderType);
+VertexConsumer animated = new AnimatedStripVertexConsumer(
+    baseConsumer, 
+    animTexture, 
+    videoTicks
+);
+
+// Use animated consumer for rendering
+animated.addVertex(poseStack.last().pose(), x, y, z)
+    .setColor(255, 255, 255, 255)
+    .setUv(u, v)  // UVs automatically adjusted for current frame
+    .setNormal(normal.x, normal.y, normal.z);
+```
+
+## Performance Considerations
+
+<CardGroup cols={2}>
+  <Card title="Adaptive Updates" icon="gauge">
+    LiveFeedTexturesManager uses an adaptive scheduler to reduce updates for distant or small TVs
+  </Card>
+  <Card title="Texture Reuse" icon="recycle">
+    Textures are cached and reused across multiple TVs showing the same feed
+  </Card>
+  <Card title="LOD System" icon="binoculars">
+    Level of Detail system reduces render quality at distance
+  </Card>
+  <Card title="Update Distance" icon="ruler">
+    Configurable update distance limits rendering load
+  </Card>
+</CardGroup>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Renderers" href="/api/renderers">
+    Renderer classes that use these textures
+  </Card>
+  <Card title="Video Sources" href="/api/video-sources">
+    Video source implementations
+  </Card>
+  <Card title="Shaders" href="/api/shaders">
+    Shader programs for effects
+  </Card>
+  <Card title="Visual Effects" href="/features/visual-effects">
+    User guide for visual effects
+  </Card>
+</CardGroup>

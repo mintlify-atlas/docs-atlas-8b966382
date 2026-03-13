@@ -1,0 +1,317 @@
+---
+title: Multi-Block TV System
+description: How TVs connect to form larger displays with automatic grid detection
+---
+
+## Overview
+
+Vista TVs can automatically connect to form larger displays, creating cinematic viewing experiences. The mod uses a sophisticated rectangular detection algorithm to merge adjacent TV blocks into a single unified screen.
+
+## Connection Algorithm
+
+The multi-block system uses a grid-based connection algorithm that automatically detects and forms rectangular TV arrays.
+
+### How It Works
+
+1. **Placement Detection**: When you place a TV block, it scans neighboring TVs
+2. **Rectangle Finding**: The `RectFinder` algorithm searches for the largest possible rectangular configuration
+3. **Master Tile Assignment**: The bottom-left TV becomes the "master" that holds the cassette
+4. **Grid Transformation**: All TVs update their connection state to display as one screen
+
+<CodeGroup>
+```java RectFinder.java
+public static Rect2D findMaxRect(
+        GridAccessor grid,
+        Vec2i from,
+        boolean squareOnly
+) {
+    return findMaxRects(grid, from, squareOnly)
+            .stream()
+            .max(Comparator.comparingInt(Rect2D::getArea))
+            .orElseThrow();
+}
+```
+
+```java TVType.java
+public static TVType fromConnections(
+    boolean up, boolean down, boolean left, boolean right
+) {
+    int mask = (up ? C.U : 0) | (down ? C.D : 0) | 
+               (left ? C.L : 0) | (right ? C.R : 0);
+    TVType c = C.LUT[mask];
+    if (c != null) return c;
+    return SINGLE;
+}
+```
+</CodeGroup>
+
+### Connection Types
+
+Each TV block stores its connection state using the `TVType` enum:
+
+<Accordion title="Available Connection Types">
+- **SINGLE** - Standalone TV (no connections)
+- **CENTER** - Connected on all four sides
+- **TOP** - Connected down, left, and right
+- **BOTTOM** - Connected up, left, and right
+- **LEFT** - Connected up, down, and right
+- **RIGHT** - Connected up, down, and left
+- **TOP_LEFT** - Connected down and right
+- **TOP_RIGHT** - Connected down and left
+- **BOTTOM_LEFT** - Connected up and right (master tile location)
+- **BOTTOM_RIGHT** - Connected up and left
+</Accordion>
+
+## Configuration
+
+The maximum size of connected TVs is configurable:
+
+```java CommonConfigs.java:24
+MAX_CONNECTED_TV_SIZE = builder
+    .comment("Maximum size of connected TVs (in blocks). Set to 1 to disable multi-block TVs.")
+    .define("max_connected_tv_size", 8, 1, 32);
+```
+
+<Note>
+The default maximum size is **8×8 blocks**. You can increase this up to 32×32 or set it to 1 to disable multi-block functionality entirely.
+</Note>
+
+## Building Multi-Block TVs
+
+### Basic Steps
+
+1. **Place TVs in a rectangular pattern** - Must all face the same direction
+2. **Automatic connection** - TVs merge instantly when placed adjacent to each other
+3. **Insert cassette** - Only the master tile (bottom-left) accepts cassettes
+
+### Tips for Building
+
+<Steps>
+  <Step title="Start with the bottom-left corner">
+    This will become your master tile where you insert cassettes
+  </Step>
+  
+  <Step title="Build rectangles or squares">
+    The algorithm only forms rectangular shapes - irregular shapes won't connect
+  </Step>
+  
+  <Step title="Ensure same facing direction">
+    All TVs must face the same direction to connect
+  </Step>
+  
+  <Step title="Power them together">
+    Redstone power state is synchronized across the entire multi-block
+  </Step>
+</Steps>
+
+<Tip>
+To prevent automatic connection, **sneak (shift) while placing** a TV block next to existing TVs.
+</Tip>
+
+## Master Tile System
+
+The **master tile** is always the bottom-left TV in a multi-block array.
+
+### Responsibilities
+
+- Stores the cassette item
+- Maintains playback state (playing/paused)
+- Holds the BlockEntity data
+- Controls the entire multi-block display
+
+```java TVBlock.java:189
+public boolean shouldHaveBlockEntity(BlockStateBase state) {
+    TVType conn = state.getValue(CONNECTION);
+    return conn == TVType.SINGLE || conn == TVType.BOTTOM_LEFT;
+}
+```
+
+<Warning>
+Only `SINGLE` and `BOTTOM_LEFT` TVs have BlockEntities. All other connection types are "slave" blocks that redirect to the master.
+</Warning>
+
+### Finding the Master
+
+When you interact with any TV in a multi-block array, the mod automatically finds the master:
+
+```java TVBlock.java:79
+private TVBlockEntity getMasterBlockEntity(Level level, BlockPos pos, BlockState state) {
+    TVType type = state.getValue(CONNECTION);
+    Direction facing = state.getValue(FACING);
+    BlockPos currentPos = pos;
+    
+    // Check if this block already has the entity
+    BlockEntity be = level.getBlockEntity(currentPos);
+    if (be instanceof TVBlockEntity tv) {
+        return tv;
+    }
+    
+    // Navigate down to bottom
+    while (type.isConnected(Direction.DOWN, facing)) {
+        currentPos = currentPos.below();
+        // ...
+    }
+    
+    // Navigate left to bottom-left corner
+    Direction myLeft = facing.getClockWise();
+    while (type.isConnected(myLeft, facing)) {
+        currentPos = currentPos.relative(myLeft);
+        // ...
+    }
+    
+    return level.getBlockEntity(currentPos);
+}
+```
+
+## Screen Resolution
+
+The screen resolution scales with the number of connected TVs:
+
+```java TVBlockEntity.java:250
+public int getScreenPixelWidth() {
+    return Math.max(1, connectedTvsAmount) * 16 - EDGE_PIXEL_LEN;
+}
+
+public int getScreenPixelHeight() {
+    return Math.max(1, connectedTvsAmount) * 16 - EDGE_PIXEL_LEN;
+}
+```
+
+### Resolution Examples
+
+| Grid Size | Pixel Width | Pixel Height |
+|-----------|-------------|-------------|
+| 1×1       | 12px        | 12px        |
+| 2×2       | 28px        | 28px        |
+| 3×3       | 44px        | 44px        |
+| 4×4       | 60px        | 60px        |
+| 8×8       | 124px       | 124px       |
+
+<Info>
+Each block contributes 16 pixels, minus a 4-pixel edge frame (`EDGE_PIXEL_LEN = 4`).
+</Info>
+
+## Dynamic Reconfiguration
+
+### Adding Blocks
+
+When placing a new TV adjacent to existing ones:
+
+```java TVBlock.java:230
+private void enlargeConnection(BlockState tvState, Level level, BlockPos pos) {
+    int maxSize = CommonConfigs.MAX_CONNECTED_TV_SIZE.get();
+    if (maxSize <= 1) return;
+    
+    TVGridAccess gridAccess = new TVGridAccess(level, pos, tvState);
+    Rect2D old = RectFinder.findMaxRect(gridAccess, Vec2i.ZERO, true);
+    RectSelection newRec = RectFinder.findMaxExpandedRect(
+        gridAccess, Vec2i.ZERO, maxSize, true
+    );
+    gridAccess.transform(old, newRec.selection(), newRec.touchedRect());
+    gridAccess.applyChanges();
+}
+```
+
+### Removing Blocks
+
+When breaking a TV from a multi-block array:
+
+```java TVBlock.java:240
+private void shrinkConnection(BlockState tvState, Level level, BlockPos pos) {
+    int maxSize = CommonConfigs.MAX_CONNECTED_TV_SIZE.get();
+    if (maxSize <= 1) return;
+    
+    TVGridAccess gridAccess = new TVGridAccess(level, pos, tvState);
+    // Find old configuration
+    gridAccess.setAt(Vec2i.ZERO, tvState.getValue(CONNECTION));
+    Rect2D old = RectFinder.findMaxRect(gridAccess, Vec2i.ZERO, true);
+    
+    // Remove this block and find new configuration
+    gridAccess.setAt(Vec2i.ZERO, null);
+    Direction2D closestDir = closestDirToCenter(old);
+    Vec2i newCenter = Vec2i.ZERO.offset(closestDir);
+    Rect2D newRec = RectFinder.findMaxRect(gridAccess, newCenter, true);
+    
+    gridAccess.transform(old, newRec, old);
+    gridAccess.applyChanges();
+}
+```
+
+<Warning>
+When the master tile (bottom-left) is removed, the cassette is transferred to the new master tile of the remaining TVs.
+</Warning>
+
+## Power State Synchronization
+
+When any TV in a multi-block receives a redstone signal:
+
+```java TVBlock.java:200
+protected void neighborChanged(BlockState state, Level level, BlockPos pos, 
+                               Block neighborBlock, BlockPos neighborPos, 
+                               boolean movedByPiston) {
+    boolean powered = level.hasNeighborSignal(pos);
+    PowerState oldPower = state.getValue(POWER_STATE);
+    PowerState newPower = PowerState.direct(powered);
+    
+    if (oldPower.isOn() != newPower.isOn()) {
+        // Update all connected TVs
+        TVGridAccess gridAccess = new TVGridAccess(level, pos, state);
+        Rect2D old = RectFinder.findMaxRect(gridAccess, Vec2i.ZERO, false);
+        gridAccess.transform(old, old, null);
+        gridAccess.applyChanges();
+    }
+}
+```
+
+<Info>
+The entire multi-block array turns on/off together when any TV receives or loses redstone power.
+</Info>
+
+## Advanced: Grid Accessor
+
+The `GridAccessor` interface provides low-level control over the TV grid:
+
+```java GridAccessor.java
+public interface GridAccessor {
+    @NotNull
+    GridTile getAt(Vec2i pos);
+    
+    void setAt(Vec2i pos, @Nullable TVType type, boolean setPower);
+    
+    default void transform(Rect2D from, Rect2D to, @Nullable Rect2D originBe) {
+        // Updates connection states for all TVs in the rectangle
+        // Handles power state propagation
+        // Manages BlockEntity migration
+    }
+    
+    void planBeMove(@Nullable Rect2D from, Rect2D to);
+}
+```
+
+### GridTile Record
+
+```java GridTile.java
+public record GridTile(
+    @Nullable TVType type, 
+    boolean hasBe, 
+    PowerState powerState
+) {
+    public static final GridTile EMPTY = 
+        new GridTile(null, false, PowerState.OFF);
+}
+```
+
+## Cinema Achievement
+
+Creating a large TV setup unlocks the "Cinema" advancement:
+
+```java TVBlockEntity.java:170
+if (result.consumesAction() && isEmpty && powered && 
+    this.connectedTvsAmount >= 3 && player instanceof ServerPlayer sp) {
+    Utils.awardAdvancement(sp, VistaMod.CINEMA_ADVANCEMENT);
+}
+```
+
+<Tip>
+Create a **3×3 or larger** TV array and insert a cassette while powered to unlock the Cinema achievement!
+</Tip>

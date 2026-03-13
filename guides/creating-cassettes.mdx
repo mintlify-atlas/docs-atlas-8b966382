@@ -1,0 +1,381 @@
+---
+title: Creating Custom Cassettes
+description: Create custom cassette tapes with GIF content and audio using data packs
+---
+
+Vista allows you to create custom cassette tapes with pre-recorded content using data packs. These cassettes can display animated GIFs, play sounds, and even provide redstone output.
+
+## Understanding Cassette Tapes
+
+Cassette tapes are defined in Vista's custom registry (`vista:cassette_tape`) and support:
+
+- **Animated GIF content**: Displayed on TV screens
+- **Sound playback**: Optional audio that plays with the video
+- **Color coding**: Cassette item colors for organization
+- **Redstone output**: Configurable comparator signals
+
+## Data Pack Structure
+
+To create custom cassettes, you need to set up a data pack with the correct structure.
+
+### Directory Layout
+
+```
+your_data_pack/
+├── pack.mcmeta
+├── data/
+│   └── your_namespace/
+│       └── vista/
+│           └── cassette_tape/
+│               ├── my_cassette.json
+│               ├── another_tape.json
+│               └── ...
+└── assets/
+    └── your_namespace/
+        └── textures/
+            └── cassette_tape/
+                ├── my_cassette.gif
+                ├── another_tape.gif
+                └── ...
+```
+
+<Note>
+  The registry path is `data/<namespace>/vista/cassette_tape/`, not the typical `data/<namespace>/cassette_tape/`. Note the `vista` folder.
+</Note>
+
+### pack.mcmeta Format
+
+Create a `pack.mcmeta` file in your data pack root:
+
+```json
+{
+  "pack": {
+    "pack_format": 48,
+    "description": "My Custom Vista Cassettes"
+  }
+}
+```
+
+## Creating a Cassette JSON
+
+Each cassette tape is defined by a JSON file in the registry.
+
+### Basic Cassette Format
+
+Here's a minimal cassette definition:
+
+```json
+{
+  "color": "0xfffaaad9",
+  "asset_id": "vista:axolotl",
+  "comparator_output": 10
+}
+```
+
+### Field Reference
+
+<ParamField path="color" type="string" required>
+  Hexadecimal color code for the cassette item (format: `0xffRRGGBB`). The `0xff` prefix specifies full opacity.
+  
+  **Examples:**
+  - `"0xfffaaad9"` - Light pink
+  - `"0xfffcb150"` - Orange
+  - `"0xff00ff00"` - Bright green
+</ParamField>
+
+<ParamField path="asset_id" type="string" required>
+  Resource location pointing to the GIF texture file. Format: `namespace:path`.
+  
+  The texture should be located at `assets/<namespace>/textures/cassette_tape/<path>.gif`.
+  
+  **Example:** `"vista:axolotl"` → `assets/vista/textures/cassette_tape/axolotl.gif`
+</ParamField>
+
+<ParamField path="comparator_output" type="integer" default="1">
+  Redstone comparator signal strength when the cassette is inserted in a TV or other container. Range: `0-15`.
+  
+  Use this to:
+  - Create automated systems that respond to specific cassettes
+  - Sort cassettes using hoppers and comparators
+  - Trigger events when certain content is playing
+</ParamField>
+
+<ParamField path="sound" type="string" optional>
+  Sound event to play alongside the video. Must be a registered sound event ID.
+  
+  **Example:** `"minecraft:music.overworld.creative"`
+  
+  <Warning>
+    If you specify a sound, you **must** also include `sound_duration`.
+  </Warning>
+</ParamField>
+
+<ParamField path="sound_duration" type="integer" optional>
+  Duration of the sound in ticks (20 ticks = 1 second). Must be positive.
+  
+  **Example:** `"sound_duration": 2400` (2 minutes)
+  
+  <Warning>
+    Required if `sound` is present. The cassette will fail validation without it.
+  </Warning>
+</ParamField>
+
+### Example Cassettes
+
+<CodeGroup>
+
+```json Basic Cassette (Video Only)
+{
+  "color": "0xfffaaad9",
+  "asset_id": "vista:axolotl",
+  "comparator_output": 10
+}
+```
+
+```json Cassette with Audio
+{
+  "color": "0xfffcb150",
+  "asset_id": "mypack:my_animation",
+  "sound": "minecraft:music.overworld.creative",
+  "sound_duration": 2400,
+  "comparator_output": 12
+}
+```
+
+```json Minimal Cassette
+{
+  "color": "0xffff0000",
+  "asset_id": "mypack:simple"
+}
+```
+
+</CodeGroup>
+
+## Creating GIF Assets
+
+The actual video content is stored as GIF files in your resource pack.
+
+### GIF Requirements
+
+<Steps>
+  <Step title="Create or Convert Your Video">
+    Use video editing software or online converters to create a GIF:
+    - Tools: Photoshop, GIMP, ffmpeg, online converters
+    - Recommended: Keep file sizes reasonable for performance
+  </Step>
+  
+  <Step title="Optimize Dimensions">
+    Consider TV screen proportions:
+    - TVs are 16:9 aspect ratio by default
+    - Higher resolutions look better but increase file size
+    - Recommended: 320x180 to 640x360 for good balance
+  </Step>
+  
+  <Step title="Place in Texture Folder">
+    Save the GIF to: `assets/<namespace>/textures/cassette_tape/<name>.gif`
+    
+    The `<name>` must match the path in your `asset_id` field.
+  </Step>
+</Steps>
+
+### Performance Tips
+
+- **Limit frame rate**: 15-30 FPS is usually sufficient
+- **Reduce colors**: GIFs with fewer colors have smaller file sizes
+- **Optimize loops**: Make sure your GIF loops smoothly
+- **Test in-game**: Some GIFs may not render correctly; always test
+
+<Warning>
+  Very large GIF files can cause lag when loaded. Keep files under 5MB for best performance.
+</Warning>
+
+## Supporter Cassettes System
+
+Vista includes a special "supporter cassettes" feature for creating named cassettes.
+
+### How Supporter Cassettes Work
+
+1. Create a cassette tape in the registry (e.g., `vista:myname`)
+2. Add it to the `vista:supporter_tapes` tag
+3. Players can craft a cassette and rename it using an anvil
+4. When renamed to match the registry ID, it becomes that cassette
+
+### Setting Up Supporter Cassettes
+
+<Steps>
+  <Step title="Create the Cassette Definition">
+    Add your cassette JSON to `data/<namespace>/vista/cassette_tape/myname.json`
+  </Step>
+  
+  <Step title="Add to Tag">
+    Create or edit `data/<namespace>/tags/vista/cassette_tape/supporter_tapes.json`:
+    
+    ```json
+    {
+      "replace": false,
+      "values": [
+        "vista:zam",
+        "vista:color_test",
+        "mypack:myname"
+      ]
+    }
+    ```
+  </Step>
+  
+  <Step title="Test the Mechanic">
+    - Craft a regular cassette
+    - Rename it in an anvil to exactly match the cassette ID (e.g., "myname")
+    - The cassette will transform into your custom supporter cassette
+  </Step>
+</Steps>
+
+<Note>
+  The name matching is case-insensitive and uses the cassette's path (not namespace). A cassette with ID `mypack:example` would be renamed to "example".
+</Note>
+
+## Registering Custom Cassettes
+
+Vista uses a data-driven registry system. Your cassettes are automatically loaded when:
+
+1. The data pack is placed in the `datapacks` folder
+2. The world is loaded or `/reload` is run
+3. The registry syncs to clients
+
+### Verification Steps
+
+<Steps>
+  <Step title="Check Data Pack Loading">
+    Run `/datapack list` in-game to verify your pack is enabled.
+  </Step>
+  
+  <Step title="Test in Creative">
+    Use a loot function or give yourself a cassette with your custom tape:
+    
+    ```
+    /give @s vista:cassette[vista:cassette_tape="mypack:myname"]
+    ```
+  </Step>
+  
+  <Step title="Insert and Watch">
+    Place a TV, power it, insert your cassette, and verify the GIF plays.
+  </Step>
+</Steps>
+
+### Troubleshooting
+
+**Cassette doesn't appear or shows error:**
+
+- Check JSON syntax (use a JSON validator)
+- Verify the `asset_id` path matches your GIF location
+- Ensure the GIF file is in the correct folder
+- Check the server/client logs for registry errors
+
+**GIF doesn't display:**
+
+- Confirm the GIF is valid (open it in a browser or image viewer)
+- Check file permissions (readable)
+- Verify the resource pack is loaded (F3+T to reload)
+- Test with a simpler/smaller GIF first
+
+**Sound doesn't play:**
+
+- Verify the sound event ID is correct and registered
+- Check that `sound_duration` matches the sound length
+- Ensure your sound settings aren't muted
+- Test with a vanilla sound first (e.g., `minecraft:music.creative`)
+
+## Advanced Features
+
+### Codec Structure
+
+For developers, the cassette tape codec is defined in `CassetteTape.java`:
+
+```java
+public static final Codec<CassetteTape> DIRECT_CODEC = 
+    RecordCodecBuilder.<CassetteTape>create((instance) -> instance.group(
+        ResourceLocation.CODEC.fieldOf("asset_id").forGetter(CassetteTape::assetId),
+        ColorUtils.CODEC.fieldOf("color").forGetter(CassetteTape::color),
+        SoundEvent.CODEC.optionalFieldOf("sound").forGetter(CassetteTape::soundEvent),
+        ExtraCodecs.POSITIVE_INT.optionalFieldOf("sound_duration").forGetter(CassetteTape::soundDuration),
+        ExtraCodecs.intRange(0, 15).optionalFieldOf("comparator_output", 1).forGetter(CassetteTape::comparatorOutput)
+    ).apply(instance, CassetteTape::new))
+```
+
+### Loot Table Integration
+
+You can add custom cassettes to loot tables using the `vista:cassette_tape` loot function:
+
+```json
+{
+  "type": "minecraft:item",
+  "name": "vista:cassette",
+  "functions": [
+    {
+      "function": "vista:set_cassette_tape",
+      "cassette_tape": "mypack:myname"
+    }
+  ]
+}
+```
+
+This is controlled by the `chest_drop` config option (see [Configuration](/guides/configuration)).
+
+## Example: Complete Custom Cassette
+
+Here's a full example of creating a custom cassette from start to finish:
+
+<Steps>
+  <Step title="Create Data Pack Structure">
+    ```
+    my_cassettes/
+    ├── pack.mcmeta
+    ├── data/
+    │   └── mycassettes/
+    │       └── vista/
+    │           └── cassette_tape/
+    │               └── cool_animation.json
+    └── assets/
+        └── mycassettes/
+            └── textures/
+                └── cassette_tape/
+                    └── cool_animation.gif
+    ```
+  </Step>
+  
+  <Step title="Write pack.mcmeta">
+    ```json
+    {
+      "pack": {
+        "pack_format": 48,
+        "description": "My Cool Animation Cassette"
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Define the Cassette">
+    `data/mycassettes/vista/cassette_tape/cool_animation.json`:
+    ```json
+    {
+      "color": "0xff00ffff",
+      "asset_id": "mycassettes:cool_animation",
+      "comparator_output": 8
+    }
+    ```
+  </Step>
+  
+  <Step title="Add the GIF">
+    Place your `cool_animation.gif` in `assets/mycassettes/textures/cassette_tape/`
+  </Step>
+  
+  <Step title="Install and Test">
+    - Move the `my_cassettes` folder to your world's `datapacks` folder
+    - Run `/reload` in-game
+    - Give yourself the cassette: `/give @s vista:cassette[vista:cassette_tape="mycassettes:cool_animation"]`
+    - Insert it in a TV and watch!
+  </Step>
+</Steps>
+
+<Note>
+  Remember that data packs are world-specific. Each world needs its own copy of the data pack, or you can use global data packs in the game's `datapacks` folder.
+</Note>

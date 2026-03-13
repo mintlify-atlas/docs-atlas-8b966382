@@ -1,0 +1,422 @@
+---
+title: Renderers
+description: Block entity renderer classes for TVs and viewfinders
+---
+
+# Renderer Classes
+
+Vista provides custom block entity renderers for its camera and television blocks. These renderers handle the visual presentation of video content and camera models.
+
+## TvBlockEntityRenderer
+
+Renders television block entities with video playback support.
+
+**Package**: `net.mehvahdjukaar.vista.client.renderer`
+
+**Implements**: `BlockEntityRenderer<TVBlockEntity>`
+
+### Constructor
+
+<ParamField path="context" type="BlockEntityRendererProvider.Context" required>
+  Renderer provider context from Minecraft
+</ParamField>
+
+```java TvBlockEntityRenderer.java:36
+public TvBlockEntityRenderer(BlockEntityRendererProvider.Context context) {
+}
+```
+
+### Methods
+
+<Accordion title="getViewDistance()">
+  Returns the maximum render distance for TV blocks.
+
+  ```java TvBlockEntityRenderer.java:40-42
+  @Override
+  public int getViewDistance() {
+      return 128; //very high, we then throttle based off the tv size
+  }
+  ```
+
+  <ResponseField name="return" type="int">
+    View distance of 128 blocks (throttled based on TV size)
+  </ResponseField>
+</Accordion>
+
+<Accordion title="shouldRenderOffScreen(TVBlockEntity)">
+  Determines if the TV should render when off-screen.
+
+  ```java TvBlockEntityRenderer.java:45-47
+  @Override
+  public boolean shouldRenderOffScreen(TVBlockEntity blockEntity) {
+      return PlatHelper.getPlatform().isFabric();
+  }
+  ```
+
+  <ParamField path="blockEntity" type="TVBlockEntity" required>
+    The TV block entity
+  </ParamField>
+
+  <ResponseField name="return" type="boolean">
+    True on Fabric, false on NeoForge
+  </ResponseField>
+</Accordion>
+
+<Accordion title="getRenderBoundingBox(BlockEntity)">
+  Calculates the render bounding box for multi-block TVs.
+
+  ```java TvBlockEntityRenderer.java:50-65
+  @ForgeOverride
+  public AABB getRenderBoundingBox(BlockEntity tile) {
+      AABB aabb = new AABB(tile.getBlockPos());
+      Direction dir = tile.getBlockState().getValue(TVBlock.FACING);
+      float width = ((TVBlockEntity) tile).getConnectedCount();
+      float height = ((TVBlockEntity) tile).getConnectedCount();
+      if (dir == Direction.EAST) {
+          return aabb.expandTowards(0, height - 1, -width + 1);
+      } else if (dir == Direction.WEST) {
+          return aabb.expandTowards(0, height - 1, width - 1);
+      } else if (dir == Direction.NORTH) {
+          return aabb.expandTowards(-width + 1, height - 1, 0);
+      } else if (dir == Direction.SOUTH) {
+          return aabb.expandTowards(width - 1, height - 1, 0);
+      }
+      return aabb;
+  }
+  ```
+
+  <ParamField path="tile" type="BlockEntity" required>
+    The block entity
+  </ParamField>
+
+  <ResponseField name="return" type="AABB">
+    Axis-aligned bounding box expanded for multi-block configuration
+  </ResponseField>
+</Accordion>
+
+<Accordion title="render(TVBlockEntity, float, PoseStack, MultiBufferSource, int, int)">
+  Main rendering method for TV screens.
+
+  ```java TvBlockEntityRenderer.java:69-128
+  @Override
+  public void render(TVBlockEntity blockEntity, float partialTick, PoseStack poseStack, 
+                     MultiBufferSource buffer, int light, int overlay) {
+      
+      if (!blockEntity.isScreenOn(partialTick)) return;
+      
+      Direction dir = blockEntity.getBlockState().getValue(TVBlock.FACING);
+      LOD lod = LOD.at(blockEntity);
+      int screenSize = blockEntity.getScreenPixelWidth();
+      Vec2 screenCenter = blockEntity.getScreenBlockCenter();
+      
+      // LOD culling
+      if (lod.isPlaneCulled(dir, 0.5f, screenSize / 16f * 1.5f, 0f)) return;
+      
+      int connectedW = blockEntity.getConnectedCount();
+      if (connectedW == 1 && !lod.isMedium()) return;
+      if(connectedW == 2 && !lod.isFar()) return;
+      
+      // Transform to screen space
+      float yaw = dir.toYRot();
+      poseStack.pushPose();
+      poseStack.translate(0.5, 0.5, 0.5);
+      poseStack.mulPose(Axis.YP.rotationDegrees(180 - yaw));
+      poseStack.translate(-screenCenter.x, screenCenter.y, -0.505);
+      
+      float s = screenSize / 32f;
+      int pixelEffectRes = ClientConfigs.SCALE_PIXELS.get() ? screenSize : TVBlockEntity.MIN_SCREEN_PIXEL_SIZE;
+      
+      boolean paused = blockEntity.isPaused();
+      boolean shouldUpdate = !paused && lod.within(ClientConfigs.UPDATE_DISTANCE.get());
+      IntAnimationState switchAnim = blockEntity.fadeAnimation;
+      IntAnimationState staticAnim = blockEntity.endermanAnimation;
+      int videoTicks = blockEntity.getPlaybackTicks();
+      
+      IVideoSource videoSource = blockEntity.getVideoSource();
+      VertexConsumer vc = videoSource.getVideoFrameBuilder(
+          partialTick, buffer, shouldUpdate, screenSize, pixelEffectRes,
+          videoTicks, paused, switchAnim, staticAnim);
+      
+      Level level = blockEntity.getLevel();
+      int skyBrightness = level.getBrightness(LightLayer.SKY, blockEntity.getBlockPos().relative(dir));
+      light = LightTexture.pack(15, skyBrightness);
+      
+      addQuad(vc, poseStack, -s, -s, s, s, light);
+      
+      poseStack.popPose();
+  }
+  ```
+
+  Renders the TV screen with:
+  - LOD (Level of Detail) culling based on distance
+  - Screen size scaling
+  - Video source rendering
+  - Lighting calculations
+  - Animation state handling
+</Accordion>
+
+<Accordion title="addQuad(VertexConsumer, PoseStack, float, float, float, float, int)">
+  Adds a textured quad to the vertex buffer.
+
+  ```java TvBlockEntityRenderer.java:130-142
+  public static void addQuad(VertexConsumer builder, PoseStack poseStack,
+                             float x0, float y0, float x1, float y1, int light) {
+      int lu = light & 0xFFFF;
+      int lv = (light >> 16) & 0xFFFF;
+      PoseStack.Pose last = poseStack.last();
+      Vector3f normal = last.normal().transform(new Vector3f(0, 0, -1));
+      vert(builder, poseStack, x0, y1, 1, 0, lu, lv, normal);
+      vert(builder, poseStack, x1, y1, 0, 0, lu, lv, normal);
+      vert(builder, poseStack, x1, y0, 0, 1, lu, lv, normal);
+      vert(builder, poseStack, x0, y0, 1, 1, lu, lv, normal);
+  }
+  ```
+
+  <ParamField path="builder" type="VertexConsumer" required>
+    Vertex consumer to build the quad
+  </ParamField>
+  <ParamField path="poseStack" type="PoseStack" required>
+    Transformation matrix stack
+  </ParamField>
+  <ParamField path="x0" type="float" required>
+    Left X coordinate
+  </ParamField>
+  <ParamField path="y0" type="float" required>
+    Bottom Y coordinate
+  </ParamField>
+  <ParamField path="x1" type="float" required>
+    Right X coordinate
+  </ParamField>
+  <ParamField path="y1" type="float" required>
+    Top Y coordinate
+  </ParamField>
+  <ParamField path="light" type="int" required>
+    Packed light value
+  </ParamField>
+</Accordion>
+
+## ViewFinderBlockEntityRenderer
+
+Renders viewfinder camera block entities with animated rotation.
+
+**Package**: `net.mehvahdjukaar.vista.client.renderer`
+
+**Implements**: `BlockEntityRenderer<ViewFinderBlockEntity>`
+
+### Model Parts
+
+The viewfinder uses a hierarchical model structure:
+
+- `model` - Root model part
+- `base` - Base/mount of the camera
+- `legs` - Tripod legs container
+  - `legsVisual` - Visual representation of legs
+  - `pivot` - Head pivot point
+    - `head` - Camera body
+    - `lens` - Camera lens
+
+### Constructor
+
+```java ViewFinderBlockEntityRenderer.java:45-54
+public ViewFinderBlockEntityRenderer(BlockEntityRendererProvider.Context context) {
+    ModelPart model = context.bakeLayer(VistaModClient.VIEWFINDER_MODEL);
+    this.legs = model.getChild("legs");
+    this.legsVisual = legs.getChild("legs_visual");
+    this.pivot = legs.getChild("head_pivot");
+    this.head = pivot.getChild("head");
+    this.lens = pivot.getChild("lens");
+    this.base = model.getChild("base");
+    this.model = model;
+}
+```
+
+### Methods
+
+<Accordion title="getViewDistance()">
+  Returns the maximum render distance.
+
+  ```java ViewFinderBlockEntityRenderer.java:57-59
+  @Override
+  public int getViewDistance() {
+      return 96;
+  }
+  ```
+
+  <ResponseField name="return" type="int">
+    View distance of 96 blocks
+  </ResponseField>
+</Accordion>
+
+<Accordion title="render(ViewFinderBlockEntity, float, PoseStack, MultiBufferSource, int, int)">
+  Renders the viewfinder model with animations.
+
+  ```java ViewFinderBlockEntityRenderer.java:62-69
+  @Override
+  public void render(ViewFinderBlockEntity tile, float partialTick, PoseStack poseStack, 
+                     MultiBufferSource bufferSource, int packedLight, int packedOverlay) {
+      this.renderModel(tile, partialTick, poseStack, bufferSource, packedLight, packedOverlay);
+      
+      if (ClientConfigs.rendersDebug()) {
+          renderDebug(tile, poseStack, bufferSource);
+      }
+  }
+  ```
+</Accordion>
+
+<Accordion title="renderModel(ViewFinderBlockEntity, float, PoseStack, MultiBufferSource, int, int)">
+  Renders the viewfinder model with pitch/yaw rotation.
+
+  Key features:
+  - Converts global camera direction to local model rotation
+  - Hides model parts when player is controlling the camera
+  - Renders lens filter items (stained glass panes)
+  - Supports emissive textures for lens effects
+
+  ```java ViewFinderBlockEntityRenderer.java:72-134
+  public void renderModel(ViewFinderBlockEntity tile, float partialTick, PoseStack poseStack,
+                          MultiBufferSource bufferSource, int packedLight, int packedOverlay) {
+      
+      boolean isControlledByLocalInstance = ViewFinderController.isActiveFor(tile);
+      
+      poseStack.pushPose();
+      poseStack.translate(0.5, 0.5, 0.5);
+      
+      Quaternionf rotation = tile.getBlockState().getValue(ViewFinderBlock.FACING).getOpposite().getRotation();
+      poseStack.mulPose(rotation);
+      
+      float pitchRad = tile.getPitch(partialTick) * Mth.DEG_TO_RAD;
+      float yawRad = tile.getYaw(partialTick) * Mth.DEG_TO_RAD;
+      
+      // Convert global direction to local rotation
+      Vector3f forward = new Vector3f(0f, 0, 1);
+      forward.rotateX(Mth.PI - pitchRad);
+      forward.rotateY(Mth.PI - yawRad);
+      forward.rotate(rotation.invert());
+      
+      yawRad = (float) Mth.atan2(forward.x, forward.z);
+      pitchRad = (float) Mth.atan2(-forward.y, Mth.sqrt(forward.x * forward.x + forward.z * forward.z));
+      
+      this.legs.yRot = yawRad;
+      this.pivot.xRot = pitchRad;
+      this.pivot.zRot = 0;
+      
+      // Hide parts when player is controlling
+      this.legsVisual.visible = !isControlledByLocalInstance;
+      this.head.visible = !isControlledByLocalInstance;
+      this.base.visible = true;
+      this.lens.visible = false;
+      
+      VertexConsumer builder = VistaModClient.VIEW_FINDER_MATERIAL.buffer(bufferSource, RenderType::entitySolid);
+      this.model.render(poseStack, builder, packedLight, packedOverlay);
+      
+      // Render lens item
+      ItemStack lens = tile.getDisplayedItem();
+      if (!isControlledByLocalInstance && !lens.isEmpty() && 
+              !VistaLevelRenderer.isViewFinderRenderingLiveFeed(tile)) {
+          this.base.visible = false;
+          this.legsVisual.visible = false;
+          this.head.visible = false;
+          this.lens.visible = true;
+          
+          ResourceLocation lensTexture = VistaModClient.VIEW_FINDER_LENS_TEXTURES.apply(lens.getItem());
+          VertexConsumer lensBuilder = bufferSource.getBuffer(RenderType.entityCutoutNoCull(lensTexture));
+          this.model.render(poseStack, lensBuilder, packedLight, packedOverlay);
+          
+          ResourceLocation emissiveTexture = VistaModClient.VIEW_FINDER_LENS_EMISSIVE_TEXTURES.apply(lens.getItem());
+          if (emissiveTexture != null) {
+              VertexConsumer emissiveBuilder = bufferSource.getBuffer(RenderType.breezeEyes(emissiveTexture));
+              this.model.render(poseStack, emissiveBuilder, packedLight, packedOverlay);
+          }
+      }
+      poseStack.popPose();
+  }
+  ```
+</Accordion>
+
+<Accordion title="createMesh()">
+  Creates the layer definition for the viewfinder model.
+
+  ```java ViewFinderBlockEntityRenderer.java:136-168
+  public static LayerDefinition createMesh() {
+      MeshDefinition meshdefinition = new MeshDefinition();
+      PartDefinition partdefinition = meshdefinition.getRoot();
+      
+      PartDefinition legs = partdefinition.addOrReplaceChild("legs", CubeListBuilder.create(),
+              PartPose.ZERO);
+      
+      legs.addOrReplaceChild("legs_visual", CubeListBuilder.create()
+                      .texOffs(0, 36).addBox(5.0F, -4.0F, -2.0F, 2.0F, 10.0F, 4.0F)
+                      .texOffs(12, 36).addBox(-7.0F, -4.0F, -2.0F, 2.0F, 10.0F, 4.0F),
+              PartPose.ZERO);
+      
+      PartDefinition pivot = legs.addOrReplaceChild("head_pivot", CubeListBuilder.create(),
+              PartPose.offsetAndRotation(0.0F, -1.0F, 0.0F, -0.1745F, 0.0F, 0.0F));
+      
+      pivot.addOrReplaceChild("head", CubeListBuilder.create()
+                      .texOffs(0, 16)
+                      .addBox(-5.0F, -6.0F, -4F, 10.0F, 12.0F, 8.0F),
+              PartPose.ZERO);
+      
+      partdefinition.addOrReplaceChild("base", CubeListBuilder.create()
+                      .texOffs(0, 0)
+                      .addBox(-7.0F, 6.0F, -7.0F, 14.0F, 2.0F, 14.0F),
+              PartPose.ZERO);
+      
+      pivot.addOrReplaceChild("lens", CubeListBuilder.create()
+                      .texOffs(0, 0)
+                      .addBox(-3.0F, -4.0F, -5.0F, 6.0F, 6.0F, 1.0F),
+              PartPose.rotation(0, Mth.PI, 0));
+      
+      return LayerDefinition.create(meshdefinition, 64, 64);
+  }
+  ```
+
+  <ResponseField name="return" type="LayerDefinition">
+    Model definition with 64x64 texture size
+  </ResponseField>
+</Accordion>
+
+## TvItemRenderer
+
+Custom item renderer for television block items when held or in inventory.
+
+**Package**: `net.mehvahdjukaar.vista.client.renderer`
+
+**Implements**: `BlockEntityWithoutLevelRenderer`
+
+## VistaLevelRenderer
+
+Custom level renderer for camera view rendering.
+
+**Package**: `net.mehvahdjukaar.vista.client.renderer`
+
+### Key Methods
+
+<Accordion title="isViewFinderRenderingLiveFeed(ViewFinderBlockEntity)">
+  Checks if a viewfinder is currently rendering its live feed.
+
+  <ParamField path="tile" type="ViewFinderBlockEntity" required>
+    The viewfinder block entity
+  </ParamField>
+
+  <ResponseField name="return" type="boolean">
+    True if the viewfinder is rendering
+  </ResponseField>
+</Accordion>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Block Entities" href="/api/block-entities">
+    Block entity classes that use these renderers
+  </Card>
+  <Card title="Textures" href="/api/textures">
+    Texture management for video rendering
+  </Card>
+  <Card title="Video Sources" href="/api/video-sources">
+    Video source implementations
+  </Card>
+  <Card title="Shaders" href="/api/shaders">
+    Shader programs for visual effects
+  </Card>
+</CardGroup>

@@ -1,0 +1,256 @@
+---
+title: Cassette Tape Registry
+description: API reference for the cassette tape registry and data-driven cassette tape system
+---
+
+## Overview
+
+The cassette tape registry is a data-driven registry that allows you to define custom cassette tapes for the Vista mod. Cassette tapes can contain video content and optional audio, and are registered through data packs.
+
+## Registry Key
+
+The cassette tape registry is accessed via the `CASSETTE_TAPE_REGISTRY_KEY` constant:
+
+```java
+public static final ResourceKey<Registry<CassetteTape>> CASSETTE_TAPE_REGISTRY_KEY =
+    RegHelper.registerDataPackRegistry(res("cassette_tape"),
+        CassetteTape.DIRECT_CODEC, CassetteTape.DIRECT_CODEC);
+```
+
+**Location:** `VistaMod.java:67-69`
+
+### Accessing the Registry
+
+You can access the cassette tape registry from a `Level` or `RegistryAccess`:
+
+```java
+Registry<CassetteTape> registry = level.registryAccess()
+    .registryOrThrow(VistaMod.CASSETTE_TAPE_REGISTRY_KEY);
+```
+
+## CassetteTape Record
+
+The `CassetteTape` record defines the structure of a cassette tape:
+
+```java
+public record CassetteTape(
+    ResourceLocation assetId,
+    int color,
+    Optional<Holder<SoundEvent>> soundEvent,
+    Optional<Integer> soundDuration,
+    int comparatorOutput
+)
+```
+
+**Location:** `CassetteTape.java:20-21`
+
+### Fields
+
+<ParamField path="assetId" type="ResourceLocation" required>
+  The resource location identifying the video asset associated with this cassette tape. This corresponds to the video file that will be played when the cassette is inserted into a television.
+</ParamField>
+
+<ParamField path="color" type="int" required>
+  The color of the cassette tape item, specified as a hexadecimal RGB value (e.g., `0xff377421`). This affects the visual appearance of the cassette tape item.
+</ParamField>
+
+<ParamField path="soundEvent" type="Optional<Holder<SoundEvent>>">
+  Optional sound event that plays alongside the video. If specified, `soundDuration` must also be provided.
+</ParamField>
+
+<ParamField path="soundDuration" type="Optional<Integer>">
+  Duration of the sound in ticks (20 ticks = 1 second). Required if `soundEvent` is specified. Must be a positive integer.
+</ParamField>
+
+<ParamField path="comparatorOutput" type="int" default="1">
+  The redstone comparator output strength when this cassette is inserted into a television. Must be between 0 and 15 (inclusive).
+</ParamField>
+
+## Codec
+
+The `CassetteTape` uses a `RecordCodecBuilder` for serialization:
+
+```java
+public static final Codec<CassetteTape> DIRECT_CODEC = 
+    RecordCodecBuilder.<CassetteTape>create((instance) -> instance.group(
+        ResourceLocation.CODEC.fieldOf("asset_id").forGetter(CassetteTape::assetId),
+        ColorUtils.CODEC.fieldOf("color").forGetter(CassetteTape::color),
+        SoundEvent.CODEC.optionalFieldOf("sound").forGetter(CassetteTape::soundEvent),
+        ExtraCodecs.POSITIVE_INT.optionalFieldOf("sound_duration").forGetter(CassetteTape::soundDuration),
+        ExtraCodecs.intRange(0, 15).optionalFieldOf("comparator_output", 1).forGetter(CassetteTape::comparatorOutput)
+    ).apply(instance, CassetteTape::new))
+    .validate(obj -> {
+        if (obj.soundEvent.isPresent() && !obj.soundDuration.isPresent()) {
+            return DataResult.error(() -> "Cassette tapes with sound events must have a sound duration");
+        }
+        return DataResult.success(obj);
+    });
+```
+
+**Location:** `CassetteTape.java:23-35`
+
+### Validation
+
+The codec enforces that if a `soundEvent` is present, a `soundDuration` must also be specified. This validation occurs during deserialization.
+
+## Data Pack Registration
+
+### File Location
+
+Cassette tapes are registered via JSON files in data packs at:
+
+```
+data/<namespace>/vista/cassette_tape/<tape_name>.json
+```
+
+### JSON Format
+
+<CodeGroup>
+
+```json Basic Cassette
+{
+  "asset_id": "vista:nature",
+  "color": "0xff377421",
+  "comparator_output": 7
+}
+```
+
+```json With Sound
+{
+  "asset_id": "vista:custom_video",
+  "color": "0xfff200bd",
+  "sound": "vista:custom_sound",
+  "sound_duration": 2400,
+  "comparator_output": 10
+}
+```
+
+```json Minimal
+{
+  "asset_id": "vista:axolotl",
+  "color": "0xfffaaad9"
+}
+```
+
+</CodeGroup>
+
+### Field Descriptions
+
+<ResponseField name="asset_id" type="string" required>
+  Resource location of the video asset (format: `"namespace:path"`)
+</ResponseField>
+
+<ResponseField name="color" type="string" required>
+  Hexadecimal color value with `0x` prefix (format: `"0xffRRGGBB"`)
+</ResponseField>
+
+<ResponseField name="sound" type="string">
+  Resource location of the sound event (format: `"namespace:sound_name"`)
+</ResponseField>
+
+<ResponseField name="sound_duration" type="integer">
+  Sound duration in ticks. Required if `sound` is specified. Must be positive.
+</ResponseField>
+
+<ResponseField name="comparator_output" type="integer" default="1">
+  Redstone comparator signal strength (0-15)
+</ResponseField>
+
+## Tags
+
+Cassette tapes can be organized using tags.
+
+### Supporter Tapes Tag
+
+```java
+public static final TagKey<CassetteTape> SUPPORTER_TAPES_TAG = 
+    TagKey.create(CASSETTE_TAPE_REGISTRY_KEY, res("supporter_tapes"));
+```
+
+**Location:** `VistaMod.java:162-163`
+
+This tag is used to mark special supporter cassette tapes that are excluded from the creative inventory by default.
+
+### Tag File Format
+
+Tag files are located at:
+
+```
+data/<namespace>/tags/vista/cassette_tape/<tag_name>.json
+```
+
+Example (`supporter_tapes.json`):
+
+```json
+{
+  "replace": false,
+  "values": [
+    "vista:zam",
+    "vista:color_test",
+    "vista:skeleton",
+    "vista:leftchaotix",
+    "vista:little_pianist"
+  ]
+}
+```
+
+## Examples
+
+### Creating a Custom Cassette Tape
+
+1. Create a JSON file at `data/mymod/vista/cassette_tape/my_tape.json`:
+
+```json
+{
+  "asset_id": "mymod:my_video",
+  "color": "0xff00ff00",
+  "comparator_output": 12
+}
+```
+
+2. The cassette will be automatically registered and can be referenced as `mymod:my_tape`
+
+### Accessing Cassette Tapes in Code
+
+```java
+// Get a cassette tape by ID
+Registry<CassetteTape> registry = level.registryAccess()
+    .registryOrThrow(VistaMod.CASSETTE_TAPE_REGISTRY_KEY);
+Holder<CassetteTape> holder = registry.getHolder(
+    ResourceKey.create(VistaMod.CASSETTE_TAPE_REGISTRY_KEY, 
+        ResourceLocation.fromNamespaceAndPath("vista", "nature"))
+).orElse(null);
+
+// Access cassette properties
+if (holder != null) {
+    CassetteTape tape = holder.value();
+    ResourceLocation assetId = tape.assetId();
+    int color = tape.color();
+    int comparatorOutput = tape.comparatorOutput();
+}
+```
+
+### Checking Tags
+
+```java
+// Check if a cassette is a supporter tape
+Holder<CassetteTape> holder = ...; // obtained from registry or component
+boolean isSupporterTape = holder.is(VistaMod.SUPPORTER_TAPES_TAG);
+```
+
+## Network Synchronization
+
+Cassette tapes are automatically synchronized over the network using a `StreamCodec`:
+
+```java
+public static final StreamCodec<RegistryFriendlyByteBuf, CassetteTape> DIRECT_STREAM_CODEC =
+    StreamCodec.composite(
+        ResourceLocation.STREAM_CODEC, CassetteTape::assetId,
+        ByteBufCodecs.VAR_INT, CassetteTape::color,
+        ByteBufCodecs.optional(SoundEvent.STREAM_CODEC), CassetteTape::soundEvent,
+        ByteBufCodecs.optional(ByteBufCodecs.VAR_INT), CassetteTape::soundDuration,
+        ByteBufCodecs.VAR_INT, CassetteTape::comparatorOutput,
+        CassetteTape::new);
+```
+
+**Location:** `CassetteTape.java:38-44`

@@ -1,0 +1,323 @@
+---
+title: Television
+description: A multi-block display that plays video cassettes when powered
+---
+
+The **Television** is a block entity that displays video content from cassettes. TVs can be connected together to form larger screens, and they respond to redstone signals.
+
+## Overview
+
+Televisions play cassettes when powered with redstone. They support multi-block configurations where multiple TV blocks connect to form a larger display, with only the bottom-left block storing the cassette.
+
+## Block Properties
+
+The Television block has three main properties that determine its behavior:
+
+<ParamField path="facing" type="Direction" default="NORTH">
+  The horizontal direction the TV faces (NORTH, SOUTH, EAST, or WEST)
+</ParamField>
+
+<ParamField path="powered" type="PowerState" default="OFF">
+  The power state of the TV:
+  - `OFF` - TV is not powered and displays no video
+  - `DIRECT` - TV receives direct redstone power from adjacent blocks
+  - `INDIRECT` - TV is part of a multi-block that receives power indirectly
+</ParamField>
+
+<ParamField path="connection" type="TVType" default="SINGLE">
+  The TV's connection state in a multi-block grid:
+  - `SINGLE` - Standalone TV (1x1)
+  - `BOTTOM_LEFT` - Bottom-left corner of multi-block (stores the cassette)
+  - `BOTTOM_RIGHT`, `TOP_LEFT`, `TOP_RIGHT` - Corner positions
+  - `BOTTOM`, `TOP`, `LEFT`, `RIGHT` - Edge positions
+  - `CENTER` - Interior position connected on all sides
+</ParamField>
+
+## Placement and Connection
+
+### Basic Placement
+
+1. Place a TV block facing the desired direction
+2. The TV automatically detects adjacent TVs with matching facing directions
+3. TVs connect into rectangular grids up to the configured maximum size
+
+```java
+// From TVBlock.java:125-130
+public BlockState getStateForPlacement(BlockPlaceContext context) {
+    boolean powered = context.getLevel().hasNeighborSignal(context.getClickedPos());
+    Direction facing = context.getHorizontalDirection().getOpposite();
+    TVType type = getTypeFromNeighbors(context.getLevel(), context.getClickedPos(), facing);
+    return this.defaultBlockState()
+        .setValue(POWER_STATE, PowerState.direct(powered))
+        .setValue(FACING, facing)
+        .setValue(CONNECTION, type);
+}
+```
+
+### Preventing Auto-Connection
+
+<Note>
+  Hold **Shift** (secondary use) while placing a TV to prevent it from automatically connecting to adjacent TVs.
+</Note>
+
+### Multi-Block Mechanics
+
+<Tabs>
+  <Tab title="Connection Logic">
+    When a TV is placed:
+    1. It scans adjacent blocks (up, down, left, right relative to facing)
+    2. Only TVs with matching `facing` direction can connect
+    3. The grid expands to the maximum rectangle possible
+    4. Only `SINGLE` and `BOTTOM_LEFT` TVs have block entities
+    5. The cassette is stored in the bottom-left corner block
+  </Tab>
+  
+  <Tab title="Grid Updates">
+    When a TV is added:
+    ```java
+    // From TVBlock.java:230-238
+    private void enlargeConnection(BlockState tvState, Level level, BlockPos pos) {
+        int maxSize = CommonConfigs.MAX_CONNECTED_TV_SIZE.get();
+        if (maxSize <= 1) return;
+        TVGridAccess gridAccess = new TVGridAccess(level, pos, tvState);
+        Rect2D old = RectFinder.findMaxRect(gridAccess, Vec2i.ZERO, true);
+        RectSelection newRec = RectFinder.findMaxExpandedRect(gridAccess, Vec2i.ZERO, maxSize, true);
+        gridAccess.transform(old, newRec.selection(), newRec.touchedRect());
+        gridAccess.applyChanges();
+    }
+    ```
+    
+    When a TV is removed:
+    - The grid recalculates to find the largest rectangle without the removed block
+    - The cassette transfers to the new bottom-left position
+    - All connection states update automatically
+  </Tab>
+  
+  <Tab title="Master Block Entity">
+    Only the bottom-left TV in a multi-block has a block entity:
+    ```java
+    // From TVBlock.java:189-197
+    public boolean shouldHaveBlockEntity(BlockStateBase state) {
+        TVType conn = state.getValue(CONNECTION);
+        return conn == TVType.SINGLE || conn == TVType.BOTTOM_LEFT;
+    }
+    ```
+    
+    All interactions redirect to the master block entity.
+  </Tab>
+</Tabs>
+
+## Interaction
+
+### Inserting Cassettes
+
+1. Right-click any TV in the multi-block with a cassette item
+2. The cassette is stored in the bottom-left block entity
+3. A cassette insert sound plays
+4. When powered, the video begins playing
+
+### Ejecting Cassettes
+
+1. Right-click the TV with an empty hand (or another cassette)
+2. The current cassette ejects as an item entity
+3. A cassette eject sound plays
+
+```java
+// From TVBlockEntity.java:151-166
+if (!isEmpty && (canPlaceItem(0, stack) || stack.isEmpty())) {
+    level.playSound(player, worldPosition, VistaMod.CASSETTE_EJECT_SOUND.get(),
+            SoundSource.BLOCKS, 1, 1);
+    Vec3 vec3 = hit.getLocation().add(new Vec3(hit.getDirection().step().mul(0.05f)));
+    vec3 = vec3.offsetRandom(this.level.random, 0.7F);
+    ItemStack itemStack2 = current.copy();
+    ItemEntity itemEntity = new ItemEntity(this.level, vec3.x(), vec3.y(), vec3.z(), itemStack2);
+    itemEntity.setDefaultPickUpDelay();
+    this.level.addFreshEntity(itemEntity);
+    this.clearContent();
+}
+```
+
+### Pausing Playback
+
+<Accordion title="How to pause">
+  1. Hold **Shift** (secondary use)
+  2. Right-click the powered TV
+  3. Video playback pauses (playback ticks stop incrementing)
+  4. Repeat to unpause
+  
+  ```java
+  // From TVBlockEntity.java:144-149
+  if (!isEmpty && powered && player.isSecondaryUseActive()) {
+      this.paused = !this.paused;
+      this.setChanged();
+      return ItemInteractionResult.sidedSuccess(this.level.isClientSide);
+  }
+  ```
+</Accordion>
+
+## Redstone Behavior
+
+### Power Detection
+
+TVs detect redstone power from any adjacent block:
+
+```java
+// From TVBlock.java:200-216
+protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block neighborBlock, 
+                              BlockPos neighborPos, boolean movedByPiston) {
+    if (neighborBlock == this) return;
+    boolean powered = level.hasNeighborSignal(pos);
+    PowerState oldPower = state.getValue(POWER_STATE);
+    PowerState newPower = PowerState.direct(powered);
+    if (newPower != oldPower)
+        level.setBlock(pos, state.setValue(POWER_STATE, newPower),
+                Block.UPDATE_KNOWN_SHAPE | Block.UPDATE_CLIENTS | Block.UPDATE_NONE);
+}
+```
+
+<Warning>
+  When power state changes, all connected TVs in the multi-block recalculate their connection states to update power propagation.
+</Warning>
+
+### Comparator Output
+
+TVs provide analog comparator output based on the cassette:
+
+```java
+// From TVBlock.java:168-176
+protected int getAnalogOutputSignal(BlockState state, Level level, BlockPos pos) {
+    BlockEntity var5 = level.getBlockEntity(pos);
+    if (var5 instanceof TVBlockEntity tv) {
+        return tv.getComparatorOutput();
+    } else {
+        return 0;
+    }
+}
+```
+
+The strength is determined by the cassette item (see `ITvCassette.getAnalogSignalStrength()`).
+
+## Display Behavior
+
+### Light Emission
+
+Powered TVs emit light level 3:
+
+```java
+// From TVBlock.java:53
+super(properties.lightLevel(state -> state.getValue(POWER_STATE).isOn() ? 3 : 0));
+```
+
+### Video Playback
+
+<Tabs>
+  <Tab title="Playback Logic">
+    ```java
+    // From TVBlockEntity.java:182-191
+    public static void onTick(Level world, BlockPos pos, BlockState state, TVBlockEntity tv) {
+        boolean powered = state.getValue(TVBlock.POWER_STATE).isOn();
+        if (powered) {
+            if (!tv.paused) tv.videoPlaybackTicks++;
+        } else {
+            tv.fadeAnimation.decrement();
+            tv.videoPlaybackTicks = 0;
+        }
+    }
+    ```
+    
+    - Playback ticks increment each tick when powered and not paused
+    - When unpowered, playback resets to 0
+    - Fade animation controls screen on/off effects
+  </Tab>
+  
+  <Tab title="Screen Dimensions">
+    Screen size scales with multi-block width:
+    
+    ```java
+    // From TVBlockEntity.java:250-256
+    public int getScreenPixelWidth() {
+        return Math.max(1, connectedTvsAmount) * 16 - EDGE_PIXEL_LEN;
+    }
+    
+    public int getScreenPixelHeight() {
+        return Math.max(1, connectedTvsAmount) * 16 - EDGE_PIXEL_LEN;
+    }
+    ```
+    
+    - Single TV: 12×12 pixels (16 - 4 edge pixels)
+    - 2×2 TV: 28×28 pixels
+    - 3×3 TV: 44×44 pixels
+  </Tab>
+  
+  <Tab title="Sound Playback">
+    On the client side, TVs loop video sound effects:
+    
+    ```java
+    // From TVBlockEntity.java:196-204
+    if (powered) {
+        if (ClientConfigs.TURN_OFF_EFFECTS.get()) tv.fadeAnimation.increment();
+        float duration = tv.videoSource.getVideoDuration();
+        if (++tv.soundLoopTicks >= (duration)) {
+            tv.soundLoopTicks = 0;
+            SoundEvent sound = tv.videoSource.getVideoSound();
+            if (sound != null) {
+                world.playLocalSound(pos, sound, SoundSource.BLOCKS, 1, 1.0f, false);
+            }
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Special Features
+
+### Enderman Detection
+
+When a TV displays a linked feed cassette tracking an Enderman:
+
+```java
+// From TVBlockEntity.java:220-230
+boolean hasAngeredEntity = false;
+if (powered && tv.observationController != null) {
+    hasAngeredEntity = tv.observationController.tick();
+}
+boolean couldSeeEnderman = tv.isLookingAtEnderman;
+if (hasAngeredEntity != couldSeeEnderman) {
+    tv.isLookingAtEnderman = hasAngeredEntity;
+    world.blockEvent(pos, state.getBlock(), 1, hasAngeredEntity ? 1 : 0);
+}
+```
+
+The TV triggers special visual effects when it can "see" an angered Enderman through the viewfinder.
+
+### Advancement: "Absolute Cinema"
+
+Playing a cassette on a 3×3 or larger TV grants the advancement:
+
+```java
+// From TVBlockEntity.java:170-174
+if (result.consumesAction() && isEmpty && powered && this.connectedTvsAmount >= 3 &&
+        player instanceof ServerPlayer sp) {
+    Utils.awardAdvancement(sp, VistaMod.CINEMA_ADVANCEMENT);
+}
+```
+
+## Wearable
+
+The TV block implements `Equipable` and can be worn as a helmet:
+
+```java
+// From TVBlock.java:68-71
+public EquipmentSlot getEquipmentSlot() {
+    return EquipmentSlot.HEAD;
+}
+```
+
+## Configuration
+
+The maximum multi-block size is controlled by:
+```java
+CommonConfigs.MAX_CONNECTED_TV_SIZE.get()
+```
+
+Set to 1 to disable multi-block connections entirely.

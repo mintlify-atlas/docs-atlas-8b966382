@@ -1,0 +1,579 @@
+---
+title: Video Sources
+description: API reference for video source interfaces and implementations
+---
+
+## Overview
+
+Video sources provide the visual content for TVs and projectors in Vista. The system uses a flexible interface-based design that supports cassette tapes, live feeds, broadcasts, and custom video sources.
+
+**Package:** `net.mehvahdjukaar.vista.client.video_source`
+
+## IVideoSource Interface
+
+The main interface for all video sources.
+
+```java
+public interface IVideoSource {
+    @NotNull
+    VertexConsumer getVideoFrameBuilder(
+        float partialTick, 
+        MultiBufferSource buffer,
+        boolean shouldUpdate, 
+        int screenSize, 
+        int pixelEffectRes,
+        int videoAnimationTick, 
+        boolean paused,
+        IntAnimationState switchAnim, 
+        IntAnimationState staticAnim
+    );
+    
+    @Nullable
+    default SoundEvent getVideoSound() {
+        return null;
+    }
+    
+    default int getVideoDuration() {
+        return 0;
+    }
+}
+```
+
+### Methods
+
+#### getVideoFrameBuilder
+
+```java
+@NotNull
+VertexConsumer getVideoFrameBuilder(
+    float partialTick,
+    MultiBufferSource buffer,
+    boolean shouldUpdate,
+    int screenSize,
+    int pixelEffectRes,
+    int videoAnimationTick,
+    boolean paused,
+    IntAnimationState switchAnim,
+    IntAnimationState staticAnim
+)
+```
+
+Returns a `VertexConsumer` configured to render the current video frame.
+
+<ParamField path="partialTick" type="float" required>
+  Partial tick time for smooth animation
+</ParamField>
+
+<ParamField path="buffer" type="MultiBufferSource" required>
+  The buffer source for creating vertex consumers
+</ParamField>
+
+<ParamField path="shouldUpdate" type="boolean" required>
+  Whether the video texture should update this frame
+</ParamField>
+
+<ParamField path="screenSize" type="int" required>
+  The resolution of the screen in pixels
+</ParamField>
+
+<ParamField path="pixelEffectRes" type="int" required>
+  The pixel effect resolution for post-processing
+</ParamField>
+
+<ParamField path="videoAnimationTick" type="int" required>
+  The current animation tick for the video
+</ParamField>
+
+<ParamField path="paused" type="boolean" required>
+  Whether the video is paused
+</ParamField>
+
+<ParamField path="switchAnim" type="IntAnimationState" required>
+  Animation state for channel switching effects
+</ParamField>
+
+<ParamField path="staticAnim" type="IntAnimationState" required>
+  Animation state for static/noise effects
+</ParamField>
+
+<ResponseField name="return" type="VertexConsumer" required>
+  A vertex consumer ready to receive quad data for rendering
+</ResponseField>
+
+#### getVideoSound
+
+```java
+@Nullable
+default SoundEvent getVideoSound()
+```
+
+Returns the sound event to play with this video source.
+
+<ResponseField name="return" type="SoundEvent | null">
+  The sound event, or null if this source has no audio
+</ResponseField>
+
+#### getVideoDuration
+
+```java
+default int getVideoDuration()
+```
+
+Returns the duration of the video in ticks.
+
+<ResponseField name="return" type="int">
+  Duration in ticks, or 0 for infinite/looping videos
+</ResponseField>
+
+### Factory Method
+
+```java
+static IVideoSource create(ItemStack stack)
+```
+
+Creates a video source from an item stack (cassette or hollow cassette).
+
+<ParamField path="stack" type="ItemStack" required>
+  The item stack to create a video source from
+</ParamField>
+
+<ResponseField name="return" type="IVideoSource">
+  A video source based on the stack's data, or `IVideoSource.EMPTY` if invalid
+</ResponseField>
+
+**Example:**
+
+```java
+IVideoSource videoSource = IVideoSource.create(cassetteStack);
+VertexConsumer vc = videoSource.getVideoFrameBuilder(
+    partialTick, buffer, true, 256, 64, animTick, false, switchAnim, staticAnim
+);
+```
+
+### Empty Instance
+
+```java
+IVideoSource EMPTY = new Empty();
+```
+
+A default empty implementation that shows color bars. Used when no valid video source is available.
+
+## Built-in Implementations
+
+### CassetteTapeVideoSource
+
+Video source for cassette tape items with pre-recorded content.
+
+```java
+public class CassetteTapeVideoSource implements IVideoSource {
+    public CassetteTapeVideoSource(Holder<CassetteTape> cassette)
+}
+```
+
+<ParamField path="cassette" type="Holder<CassetteTape>" required>
+  The cassette tape data holder
+</ParamField>
+
+**Features:**
+- Plays pre-recorded sound from the cassette tape
+- Returns tape duration for proper playback timing
+- Renders cassette video frames with animation support
+
+**Example:**
+
+```java
+var tape = cassetteStack.get(VistaMod.CASSETTE_TAPE_COMPONENT.get());
+if (tape != null) {
+    IVideoSource source = new CassetteTapeVideoSource(tape);
+    SoundEvent sound = source.getVideoSound();
+    int duration = source.getVideoDuration();
+}
+```
+
+#### Methods
+
+```java
+@Override
+public SoundEvent getVideoSound() {
+    var s = tape.value().soundEvent();
+    return s.map(Holder::value).orElseGet(VistaMod.TV_STATIC_SOUND);
+}
+
+@Override
+public int getVideoDuration() {
+    return tape.value().soundDuration().orElse(VistaMod.STATIC_SOUND_DURATION);
+}
+
+@Override
+public @NotNull VertexConsumer getVideoFrameBuilder(...) {
+    return TvScreenVertexConsumers.getTapeVC(
+        buffer, tape, pixelEffectRes, animationTick, paused, switchAnim
+    );
+}
+```
+
+### BroadcastVideoSource
+
+Video source that receives content from a broadcast feed via UUID.
+
+```java
+public record BroadcastVideoSource(UUID uuid) implements IVideoSource
+```
+
+<ParamField path="uuid" type="UUID" required>
+  The feed UUID to receive broadcasts from
+</ParamField>
+
+**Features:**
+- Looks up the broadcast source via `BroadcastManager`
+- Delegates to the broadcast source's video content
+- Falls back to noise/static if broadcast is unavailable
+- Works on both client and server
+
+**Example:**
+
+```java
+UUID feedUUID = hollowCassetteStack.get(VistaMod.LINKED_FEED_COMPONENT.get());
+IVideoSource source = new BroadcastVideoSource(feedUUID);
+
+// When rendering:
+VertexConsumer vc = source.getVideoFrameBuilder(
+    partialTick, buffer, true, 256, 64, animTick, false, switchAnim, staticAnim
+);
+```
+
+#### Implementation
+
+```java
+@Override
+public @NotNull VertexConsumer getVideoFrameBuilder(
+    float partialTick, MultiBufferSource buffer,
+    boolean shouldUpdate, int screenSize, int pixelEffectRes,
+    int videoAnimationTick, boolean paused,
+    IntAnimationState switchAnim, IntAnimationState staticAnim) {
+    
+    Level level = Minecraft.getInstance().level;
+    BroadcastManager manager = BroadcastManager.getInstance(level);
+    IBroadcastSource broadcast = manager.getBroadcast(uuid, true);
+
+    if (broadcast != null) {
+        IVideoSource vfContent = broadcast.getBroadcastVideo();
+        if (vfContent != null) {
+            return vfContent.getVideoFrameBuilder(
+                partialTick, buffer, shouldUpdate, screenSize, pixelEffectRes,
+                videoAnimationTick, paused, switchAnim, staticAnim
+            );
+        }
+    }
+    return TvScreenVertexConsumers.getNoiseVC(buffer, pixelEffectRes, switchAnim);
+}
+```
+
+### LiveFeedVideoSource
+
+Video source for live camera feeds from ViewFinder block entities.
+
+```java
+public class LiveFeedVideoSource implements IVideoSource {
+    public LiveFeedVideoSource(ViewFinderBlockEntity viewFinder)
+    public void onItemChanged()
+}
+```
+
+<ParamField path="viewFinder" type="ViewFinderBlockEntity" required>
+  The ViewFinder block entity providing the camera feed
+</ParamField>
+
+**Features:**
+- Renders live camera view from ViewFinder
+- Supports color filters and post-processing effects
+- Integrates with the `LiveFeedTexturesManager` for texture management
+- Falls back to noise/static if texture is unavailable
+
+**Example:**
+
+```java
+public class ViewFinderBlockEntity extends BlockEntity implements IBroadcastSource {
+    private LiveFeedVideoSource videoSource;
+    
+    public ViewFinderBlockEntity(BlockPos pos, BlockState state) {
+        super(BLOCK_ENTITY_TYPE, pos, state);
+        this.videoSource = new LiveFeedVideoSource(this);
+    }
+    
+    @Override
+    public IVideoSource getBroadcastVideo() {
+        return videoSource;
+    }
+    
+    public void onFilterChanged() {
+        videoSource.onItemChanged();
+    }
+}
+```
+
+#### onItemChanged
+
+```java
+public void onItemChanged()
+```
+
+Call this method when the filter item in the ViewFinder changes. Updates post-processing shaders based on the filter type.
+
+**Example:**
+
+```java
+public void setDisplayedItem(ItemStack stack) {
+    this.filterItem = stack;
+    if (level != null && level.isClientSide) {
+        videoSource.onItemChanged();
+    }
+}
+```
+
+#### Implementation Details
+
+```java
+@Override
+public @NotNull VertexConsumer getVideoFrameBuilder(
+    float partialTick, MultiBufferSource buffer, boolean shouldUpdate,
+    int screenSize, int pixelEffectRes,
+    int videoAnimationTick, boolean paused,
+    IntAnimationState switchAnim, IntAnimationState staticAnim) {
+
+    LiveFeedTexture tex = LiveFeedTexturesManager.requestLiveFeedTexture(
+        viewFinder.getUUID(), screenSize, shouldUpdate, postShader
+    );
+
+    VertexConsumer vc = null;
+    if (tex != null) {
+        vc = TvScreenVertexConsumers.getLiveFeedVC(
+            buffer, tex, pixelEffectRes, paused, switchAnim, staticAnim
+        );
+    }
+    if (vc == null) {
+        vc = TvScreenVertexConsumers.getNoiseVC(buffer, pixelEffectRes, switchAnim);
+    }
+    return vc;
+}
+```
+
+The implementation:
+1. Requests a live feed texture from the texture manager
+2. Applies post-processing shaders based on filter items
+3. Falls back to noise if texture is unavailable
+
+### WebUrlVideoSource
+
+Stub implementation for future web-based video sources.
+
+```java
+public class WebUrlVideoSource implements IVideoSource
+```
+
+<Warning>
+  This class is currently a placeholder and not fully implemented.
+</Warning>
+
+## Creating Custom Video Sources
+
+<Steps>
+
+<Step title="Implement the IVideoSource interface">
+
+```java
+public class CustomVideoSource implements IVideoSource {
+    private final ResourceLocation textureLocation;
+    
+    public CustomVideoSource(ResourceLocation texture) {
+        this.textureLocation = texture;
+    }
+}
+```
+
+</Step>
+
+<Step title="Implement getVideoFrameBuilder">
+
+```java
+@Override
+public @NotNull VertexConsumer getVideoFrameBuilder(
+    float partialTick, MultiBufferSource buffer,
+    boolean shouldUpdate, int screenSize, int pixelEffectRes,
+    int videoAnimationTick, boolean paused,
+    IntAnimationState switchAnim, IntAnimationState staticAnim) {
+    
+    // Get or create your texture
+    RenderType renderType = RenderType.text(textureLocation);
+    return buffer.getBuffer(renderType);
+}
+```
+
+</Step>
+
+<Step title="Optionally implement audio methods">
+
+```java
+@Override
+public SoundEvent getVideoSound() {
+    return MyMod.CUSTOM_VIDEO_SOUND.get();
+}
+
+@Override
+public int getVideoDuration() {
+    return 1200; // 60 seconds at 20 ticks/second
+}
+```
+
+</Step>
+
+<Step title="Use your custom video source">
+
+```java
+public class CustomBlockEntity extends BlockEntity implements IBroadcastSource {
+    private final UUID uuid = UUID.randomUUID();
+    private final IVideoSource videoSource;
+    
+    public CustomBlockEntity(BlockPos pos, BlockState state) {
+        super(TYPE, pos, state);
+        this.videoSource = new CustomVideoSource(
+            new ResourceLocation("mymod", "textures/custom_video.png")
+        );
+    }
+    
+    @Override
+    public UUID getUUID() {
+        return uuid;
+    }
+    
+    @Override
+    public IVideoSource getBroadcastVideo() {
+        return videoSource;
+    }
+}
+```
+
+</Step>
+
+</Steps>
+
+## TvScreenVertexConsumers Utility
+
+The `TvScreenVertexConsumers` class provides helper methods for creating vertex consumers with built-in effects:
+
+```java
+// Color bars (default)
+VertexConsumer vc = TvScreenVertexConsumers.getBarsVC(
+    buffer, pixelEffectRes, paused, switchAnim
+);
+
+// Noise/static
+VertexConsumer vc = TvScreenVertexConsumers.getNoiseVC(
+    buffer, pixelEffectRes, switchAnim
+);
+
+// Cassette tape
+VertexConsumer vc = TvScreenVertexConsumers.getTapeVC(
+    buffer, tape, pixelEffectRes, animationTick, paused, switchAnim
+);
+
+// Live feed
+VertexConsumer vc = TvScreenVertexConsumers.getLiveFeedVC(
+    buffer, texture, pixelEffectRes, paused, switchAnim, staticAnim
+);
+```
+
+## Complete Integration Example
+
+<CodeGroup>
+
+```java Block Entity
+public class CameraBlockEntity extends BlockEntity implements IBroadcastSource {
+    private final UUID feedUUID = UUID.randomUUID();
+    private final LiveFeedVideoSource videoSource;
+    
+    public CameraBlockEntity(BlockPos pos, BlockState state) {
+        super(CAMERA_BE.get(), pos, state);
+        this.videoSource = new LiveFeedVideoSource(this);
+    }
+    
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        ensureLinked(level, LevelBELocation.of(this));
+    }
+    
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        removeLink(level);
+    }
+    
+    @Override
+    public UUID getUUID() {
+        return feedUUID;
+    }
+    
+    @Override
+    public IVideoSource getBroadcastVideo() {
+        return videoSource;
+    }
+}
+```
+
+```java Hollow Cassette Item
+public class HollowCassetteItem extends Item {
+    
+    public InteractionResultHolder<ItemStack> use(
+        Level level, Player player, InteractionHand hand) {
+        
+        ItemStack stack = player.getItemInHand(hand);
+        
+        if (!level.isClientSide) {
+            // Link to nearest camera
+            UUID nearestFeed = findNearestBroadcast(level, player.blockPosition());
+            if (nearestFeed != null) {
+                stack.set(VistaMod.LINKED_FEED_COMPONENT.get(), nearestFeed);
+                player.displayClientMessage(
+                    Component.translatable("item.vista.hollow_cassette.linked"),
+                    true
+                );
+            }
+        }
+        
+        return InteractionResultHolder.success(stack);
+    }
+}
+```
+
+```java TV Renderer
+public class TVRenderer implements BlockEntityRenderer<TVBlockEntity> {
+    
+    @Override
+    public void render(
+        TVBlockEntity be, float partialTick,
+        PoseStack poseStack, MultiBufferSource buffer,
+        int light, int overlay) {
+        
+        IVideoSource videoSource = be.getVideoSource();
+        if (videoSource != null) {
+            VertexConsumer vc = videoSource.getVideoFrameBuilder(
+                partialTick, buffer,
+                true, 256, 64,
+                be.getAnimationTick(), be.isPaused(),
+                be.getSwitchAnim(), be.getStaticAnim()
+            );
+            
+            // Render the TV screen quad with the vertex consumer
+            renderScreenQuad(poseStack, vc, light, overlay);
+        }
+    }
+}
+```
+
+</CodeGroup>
+
+## See Also
+
+- [BroadcastManager](/api/broadcast-manager) - Managing broadcast feeds
+- [BroadcastLocationType](/api/location-types) - Location type system

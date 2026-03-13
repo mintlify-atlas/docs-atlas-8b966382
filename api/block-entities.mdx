@@ -1,0 +1,890 @@
+---
+title: Block Entity Classes
+description: API reference for Vista's block entity classes that manage block state and behavior
+---
+
+This page documents the public API for Vista's block entity classes. Block entities store data and handle the logic for blocks with complex behavior.
+
+## TVBlockEntity
+
+**Package:** `net.mehvahdjukaar.vista.common.tv`
+
+**Extends:** `ItemDisplayTile`
+
+The `TVBlockEntity` class manages the state and behavior of TV blocks, including video playback, cassette storage, and enderman interaction detection.
+
+### Fields
+
+<ParamField path="MIN_SCREEN_PIXEL_SIZE" type="int">
+  Constant value: `12` - The minimum screen size in pixels (16 - 4 pixel edge)
+</ParamField>
+
+### Constructor
+
+```java
+public TVBlockEntity(BlockPos pos, BlockState state)
+```
+
+Creates a new TV block entity at the specified position with the given state.
+
+<ParamField path="pos" type="BlockPos">
+  The position of the block entity
+</ParamField>
+
+<ParamField path="state" type="BlockState">
+  The initial block state
+</ParamField>
+
+### Public Methods
+
+<Accordion title="getVideoSource()">
+```java
+public @NotNull IVideoSource getVideoSource()
+```
+
+Gets the current video source being displayed on the TV.
+
+<ResponseField name="return" type="IVideoSource">
+  The video source, or `IVideoSource.EMPTY` if no cassette is inserted
+</ResponseField>
+</Accordion>
+
+<Accordion title="getConnectedCount()">
+```java
+public int getConnectedCount()
+```
+
+Gets the number of connected TV blocks in the horizontal direction (width of the multi-block TV).
+
+<ResponseField name="return" type="int">
+  The width of the connected TV array (1 for single TVs)
+</ResponseField>
+</Accordion>
+
+<Accordion title="setConnectionSize()">
+```java
+public void setConnectionSize(int width)
+```
+
+Sets the width of the connected TV array. Called internally when TVs connect/disconnect.
+
+<ParamField path="width" type="int">
+  The new width value
+</ParamField>
+</Accordion>
+
+<Accordion title="isPaused()">
+```java
+public boolean isPaused()
+```
+
+Checks if video playback is currently paused.
+
+<ResponseField name="return" type="boolean">
+  `true` if paused, `false` otherwise
+</ResponseField>
+</Accordion>
+
+<Accordion title="getPlaybackTicks()">
+```java
+public int getPlaybackTicks()
+```
+
+Gets the current video playback position in ticks (20 ticks = 1 second).
+
+<ResponseField name="return" type="int">
+  The playback position in ticks
+</ResponseField>
+</Accordion>
+
+<Accordion title="canPlaceItem()">
+```java
+public boolean canPlaceItem(int index, ItemStack stack)
+```
+
+Checks if an item can be placed in the TV's inventory slot.
+
+<ParamField path="index" type="int">
+  The inventory slot index (always 0 for TVs)
+</ParamField>
+
+<ParamField path="stack" type="ItemStack">
+  The item stack to check
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if the item implements `ITvCassette`
+</ResponseField>
+</Accordion>
+
+<Accordion title="canTakeItemThroughFace()">
+```java
+public boolean canTakeItemThroughFace(
+    int index, 
+    ItemStack stack, 
+    Direction direction
+)
+```
+
+Checks if items can be extracted from the TV via hoppers or other automation.
+
+<ResponseField name="return" type="boolean">
+  Always returns `true` - cassettes can be extracted from any face
+</ResponseField>
+</Accordion>
+
+<Accordion title="canPlaceItemThroughFace()">
+```java
+public boolean canPlaceItemThroughFace(
+    int index, 
+    ItemStack stack, 
+    @Nullable Direction direction
+)
+```
+
+Checks if items can be inserted into the TV via hoppers or other automation.
+
+<ResponseField name="return" type="boolean">
+  Always returns `true` - cassettes can be inserted from any face
+</ResponseField>
+</Accordion>
+
+<Accordion title="interactWithPlayerItem()">
+```java
+public ItemInteractionResult interactWithPlayerItem(
+    Player player, 
+    InteractionHand handIn, 
+    ItemStack stack, 
+    int slot, 
+    BlockHitResult hit
+)
+```
+
+Handles player interaction with the TV, including inserting/ejecting cassettes and pausing playback.
+
+<ParamField path="player" type="Player">
+  The player interacting with the TV
+</ParamField>
+
+<ParamField path="handIn" type="InteractionHand">
+  The hand used for interaction
+</ParamField>
+
+<ParamField path="stack" type="ItemStack">
+  The item in the player's hand
+</ParamField>
+
+<ParamField path="slot" type="int">
+  The slot index (always 0)
+</ParamField>
+
+<ParamField path="hit" type="BlockHitResult">
+  The ray trace result
+</ParamField>
+
+<ResponseField name="return" type="ItemInteractionResult">
+  The result of the interaction (success, fail, or pass)
+</ResponseField>
+
+**Behavior:**
+- Shift + right-click on a powered TV with a cassette: toggles pause
+- Right-click with empty hand or cassette: ejects current cassette
+- Right-click with valid cassette: inserts cassette
+- Grants "absolute_cinema" advancement when inserting a cassette into a 3x3+ TV
+</Accordion>
+
+<Accordion title="getScreenBlockCenter()">
+```java
+public Vec2 getScreenBlockCenter()
+```
+
+Gets the center position of the multi-block TV screen in block coordinates relative to this block entity.
+
+<ResponseField name="return" type="Vec2">
+  The center offset (e.g., (1, 1) for a 3x3 TV)
+</ResponseField>
+</Accordion>
+
+<Accordion title="getScreenPixelWidth()">
+```java
+public int getScreenPixelWidth()
+```
+
+Gets the width of the TV screen in pixels.
+
+<ResponseField name="return" type="int">
+  Screen width in pixels (connectedTvsAmount * 16 - 4)
+</ResponseField>
+</Accordion>
+
+<Accordion title="getScreenPixelHeight()">
+```java
+public int getScreenPixelHeight()
+```
+
+Gets the height of the TV screen in pixels.
+
+<ResponseField name="return" type="int">
+  Screen height in pixels (connectedTvsAmount * 16 - 4)
+</ResponseField>
+</Accordion>
+
+<Accordion title="getComparatorOutput()">
+```java
+public int getComparatorOutput()
+```
+
+Gets the redstone comparator output signal strength.
+
+<ResponseField name="return" type="int">
+  Signal strength from 0-15 based on the cassette's `getAnalogSignalStrength()` method
+</ResponseField>
+</Accordion>
+
+<Accordion title="isScreenOn()">
+```java
+public boolean isScreenOn(float partialTicks)
+```
+
+Checks if the TV screen is currently on (including fade-out animation).
+
+<ParamField path="partialTicks" type="float">
+  Partial tick time for smooth interpolation
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if the screen is on or fading out
+</ResponseField>
+</Accordion>
+
+<Accordion title="onTick() [Static]">
+```java
+public static void onTick(
+    Level world, 
+    BlockPos pos, 
+    BlockState state, 
+    TVBlockEntity tv
+)
+```
+
+Called every tick to update TV behavior. Handles video playback, sound, and enderman detection.
+
+<ParamField path="world" type="Level">
+  The level/world
+</ParamField>
+
+<ParamField path="pos" type="BlockPos">
+  The block position
+</ParamField>
+
+<ParamField path="state" type="BlockState">
+  The current block state
+</ParamField>
+
+<ParamField path="tv" type="TVBlockEntity">
+  The TV block entity instance
+</ParamField>
+</Accordion>
+
+### Usage Example
+
+```java
+// Get a TV block entity
+if (level.getBlockEntity(pos) instanceof TVBlockEntity tv) {
+    // Check if a cassette is inserted
+    ItemStack cassette = tv.getDisplayedItem();
+    if (!cassette.isEmpty()) {
+        // Get video information
+        IVideoSource video = tv.getVideoSource();
+        int playbackTicks = tv.getPlaybackTicks();
+        boolean paused = tv.isPaused();
+        
+        System.out.println("Playing video at " + playbackTicks + " ticks");
+        if (paused) {
+            System.out.println("Video is paused");
+        }
+    }
+    
+    // Get TV screen dimensions
+    int connectedWidth = tv.getConnectedCount();
+    int pixelWidth = tv.getScreenPixelWidth();
+    int pixelHeight = tv.getScreenPixelHeight();
+    System.out.println("TV is " + connectedWidth + "x" + connectedWidth + " blocks");
+    System.out.println("Screen resolution: " + pixelWidth + "x" + pixelHeight);
+    
+    // Insert a cassette programmatically
+    ItemStack newCassette = new ItemStack(VistaMod.CASSETTE.get());
+    if (tv.canPlaceItem(0, newCassette)) {
+        tv.setDisplayedItem(newCassette);
+        tv.setChanged();
+    }
+}
+```
+
+---
+
+## ViewFinderBlockEntity
+
+**Package:** `net.mehvahdjukaar.vista.common.view_finder`
+
+**Extends:** `ItemDisplayTile`
+
+**Implements:** `IOneUserInteractable`, `IBroadcastSource`
+
+The `ViewFinderBlockEntity` manages a controllable camera that can broadcast a live video feed.
+
+### Fields
+
+<ParamField path="MAX_ZOOM" type="int">
+  Constant value: `44` - The maximum zoom level
+</ParamField>
+
+<ParamField path="NEAR_PLANE" type="float">
+  Constant value: `0.05f` - The near clipping plane distance for rendering
+</ParamField>
+
+<ParamField path="selfAccess" type="ViewFinderAccess">
+  Public accessor for controlling this view finder's position and rotation
+</ParamField>
+
+### Constructor
+
+```java
+public ViewFinderBlockEntity(BlockPos pos, BlockState state)
+```
+
+Creates a new view finder block entity with a unique UUID for broadcast identification.
+
+<ParamField path="pos" type="BlockPos">
+  The position of the block entity
+</ParamField>
+
+<ParamField path="state" type="BlockState">
+  The initial block state
+</ParamField>
+
+### Public Methods
+
+<Accordion title="getUUID()">
+```java
+public UUID getUUID()
+```
+
+Gets the unique identifier for this view finder, used for linking with hollow cassettes.
+
+<ResponseField name="return" type="UUID">
+  The unique broadcast ID
+</ResponseField>
+</Accordion>
+
+<Accordion title="getYaw()">
+```java
+public float getYaw(float partialTicks)
+public float getYaw()
+```
+
+Gets the camera's yaw (horizontal) rotation in degrees.
+
+<ParamField path="partialTicks" type="float">
+  Partial tick time for smooth interpolation (overload only)
+</ParamField>
+
+<ResponseField name="return" type="float">
+  Yaw angle in degrees
+</ResponseField>
+</Accordion>
+
+<Accordion title="getPitch()">
+```java
+public float getPitch(float partialTicks)
+public float getPitch()
+```
+
+Gets the camera's pitch (vertical) rotation in degrees.
+
+<ParamField path="partialTicks" type="float">
+  Partial tick time for smooth interpolation (overload only)
+</ParamField>
+
+<ResponseField name="return" type="float">
+  Pitch angle in degrees (-90 = up, 90 = down)
+</ResponseField>
+</Accordion>
+
+<Accordion title="getZoomLevel()">
+```java
+public int getZoomLevel()
+```
+
+Gets the current zoom level.
+
+<ResponseField name="return" type="int">
+  Zoom level from 1 to `MAX_ZOOM` (44)
+</ResponseField>
+</Accordion>
+
+<Accordion title="isLocked()">
+```java
+public boolean isLocked()
+```
+
+Checks if the camera controls are locked.
+
+<ResponseField name="return" type="boolean">
+  `true` if locked, preventing camera movement
+</ResponseField>
+</Accordion>
+
+<Accordion title="setYaw()">
+```java
+public void setYaw(ViewFinderAccess access, float relativeYaw)
+```
+
+Sets the camera's yaw rotation, clamped to the allowed range.
+
+<ParamField path="access" type="ViewFinderAccess">
+  The access object for this view finder
+</ParamField>
+
+<ParamField path="relativeYaw" type="float">
+  The yaw angle in degrees
+</ParamField>
+</Accordion>
+
+<Accordion title="setPitch()">
+```java
+public void setPitch(ViewFinderAccess access, float relativePitch)
+```
+
+Sets the camera's pitch rotation, clamped to the allowed range.
+
+<ParamField path="access" type="ViewFinderAccess">
+  The access object for this view finder
+</ParamField>
+
+<ParamField path="relativePitch" type="float">
+  The pitch angle in degrees
+</ParamField>
+</Accordion>
+
+<Accordion title="setZoomLevel()">
+```java
+public void setZoomLevel(int zoom)
+```
+
+Sets the zoom level.
+
+<ParamField path="zoom" type="int">
+  Zoom level from 1 to MAX_ZOOM
+</ParamField>
+</Accordion>
+
+<Accordion title="setLocked()">
+```java
+public void setLocked(boolean locked)
+```
+
+Sets whether the camera controls are locked.
+
+<ParamField path="locked" type="boolean">
+  `true` to lock controls
+</ParamField>
+</Accordion>
+
+<Accordion title="setAttributes()">
+```java
+public void setAttributes(
+    float yaw, 
+    float pitch, 
+    int zoom, 
+    boolean locked,
+    Player controllingPlayer, 
+    ViewFinderAccess access
+)
+```
+
+Sets all camera attributes at once.
+
+<ParamField path="yaw" type="float">
+  Yaw angle in degrees
+</ParamField>
+
+<ParamField path="pitch" type="float">
+  Pitch angle in degrees
+</ParamField>
+
+<ParamField path="zoom" type="int">
+  Zoom level
+</ParamField>
+
+<ParamField path="locked" type="boolean">
+  Lock state
+</ParamField>
+
+<ParamField path="controllingPlayer" type="Player">
+  The player controlling the camera
+</ParamField>
+
+<ParamField path="access" type="ViewFinderAccess">
+  The access object
+</ParamField>
+</Accordion>
+
+<Accordion title="getFOV()">
+```java
+public float getFOV()
+```
+
+Gets the field of view for the camera based on zoom level.
+
+<ResponseField name="return" type="float">
+  FOV in degrees (70 at minimum zoom, decreasing with higher zoom)
+</ResponseField>
+</Accordion>
+
+<Accordion title="getFOVModifier()">
+```java
+public float getFOVModifier()
+```
+
+Gets the FOV multiplier based on zoom level.
+
+<ResponseField name="return" type="float">
+  Multiplier from 0.02 (max zoom) to 1.0 (min zoom)
+</ResponseField>
+</Accordion>
+
+<Accordion title="getNormalizedZoomFactor()">
+```java
+public float getNormalizedZoomFactor()
+```
+
+Gets the zoom as a normalized 0-1 value with easing.
+
+<ResponseField name="return" type="float">
+  Normalized zoom from 0.0 (min) to 1.0 (max) with quadratic easing
+</ResponseField>
+</Accordion>
+
+<Accordion title="canPlaceItem()">
+```java
+public boolean canPlaceItem(int index, ItemStack stack)
+```
+
+Checks if an item can be placed in the view finder's filter slot.
+
+<ParamField path="index" type="int">
+  The inventory slot index
+</ParamField>
+
+<ParamField path="stack" type="ItemStack">
+  The item to check
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if the item is a stained glass pane or shader (with Supplementaries)
+</ResponseField>
+</Accordion>
+
+<Accordion title="tryInteracting()">
+```java
+public ItemInteractionResult tryInteracting(
+    Player player, 
+    InteractionHand hand, 
+    ItemStack stack,
+    BlockPos pos
+)
+```
+
+Handles player interaction to insert filters or open the control GUI.
+
+<ParamField path="player" type="Player">
+  The interacting player
+</ParamField>
+
+<ParamField path="hand" type="InteractionHand">
+  The hand used
+</ParamField>
+
+<ParamField path="stack" type="ItemStack">
+  The item in hand
+</ParamField>
+
+<ParamField path="pos" type="BlockPos">
+  The block position
+</ParamField>
+
+<ResponseField name="return" type="ItemInteractionResult">
+  Success if interaction was handled
+</ResponseField>
+</Accordion>
+
+<Accordion title="getBroadcastVideo()">
+```java
+public @Nullable IVideoSource getBroadcastVideo()
+```
+
+Gets the live feed video source for broadcasting.
+
+<ResponseField name="return" type="IVideoSource">
+  The live feed video source
+</ResponseField>
+</Accordion>
+
+<Accordion title="tick() [Static]">
+```java
+public static void tick(
+    Level level, 
+    BlockPos pos, 
+    BlockState state, 
+    ViewFinderBlockEntity tile
+)
+```
+
+Called every tick to update camera interpolation.
+
+<ParamField path="level" type="Level">
+  The level/world
+</ParamField>
+
+<ParamField path="pos" type="BlockPos">
+  The block position
+</ParamField>
+
+<ParamField path="state" type="BlockState">
+  The current block state
+</ParamField>
+
+<ParamField path="tile" type="ViewFinderBlockEntity">
+  The view finder instance
+</ParamField>
+</Accordion>
+
+### Usage Example
+
+```java
+// Get a view finder block entity
+if (level.getBlockEntity(pos) instanceof ViewFinderBlockEntity viewFinder) {
+    // Get camera orientation
+    float yaw = viewFinder.getYaw();
+    float pitch = viewFinder.getPitch();
+    int zoom = viewFinder.getZoomLevel();
+    
+    System.out.println("Camera facing: yaw=" + yaw + ", pitch=" + pitch);
+    System.out.println("Zoom level: " + zoom + "/" + ViewFinderBlockEntity.MAX_ZOOM);
+    
+    // Adjust camera orientation
+    ViewFinderAccess access = viewFinder.selfAccess;
+    viewFinder.setYaw(access, 45.0f);  // Face northeast
+    viewFinder.setPitch(access, -30.0f);  // Look up 30 degrees
+    viewFinder.setZoomLevel(10);  // Set moderate zoom
+    viewFinder.setChanged();
+    
+    // Lock the camera
+    viewFinder.setLocked(true);
+    
+    // Get the broadcast ID for linking with hollow cassettes
+    UUID broadcastId = viewFinder.getUUID();
+    System.out.println("Broadcast ID: " + broadcastId);
+    
+    // Calculate FOV for this zoom level
+    float fov = viewFinder.getFOV();
+    System.out.println("Current FOV: " + fov + " degrees");
+    
+    // Insert a color filter (stained glass pane)
+    ItemStack redPane = new ItemStack(Items.RED_STAINED_GLASS_PANE);
+    if (viewFinder.canPlaceItem(0, redPane)) {
+        viewFinder.setDisplayedItem(redPane);
+        viewFinder.setChanged();
+    }
+}
+```
+
+---
+
+## SignalProjectorBlockEntity
+
+**Package:** `net.mehvahdjukaar.vista.common.projector`
+
+**Extends:** `BlockEntity`
+
+**Implements:** `IScreenProvider`, `IBroadcastSource`
+
+The `SignalProjectorBlockEntity` broadcasts video content from a configurable URL.
+
+### Constructor
+
+```java
+public SignalProjectorBlockEntity(BlockPos pos, BlockState state)
+```
+
+Creates a new signal projector with a unique UUID.
+
+<ParamField path="pos" type="BlockPos">
+  The position of the block entity
+</ParamField>
+
+<ParamField path="state" type="BlockState">
+  The initial block state
+</ParamField>
+
+### Public Methods
+
+<Accordion title="getUUID()">
+```java
+public UUID getUUID()
+```
+
+Gets the unique identifier for this signal projector.
+
+<ResponseField name="return" type="UUID">
+  The unique broadcast ID
+</ResponseField>
+</Accordion>
+
+<Accordion title="getUrl()">
+```java
+public String getUrl()
+```
+
+Gets the configured video URL.
+
+<ResponseField name="return" type="String">
+  The URL string (may be empty)
+</ResponseField>
+</Accordion>
+
+<Accordion title="setUrl()">
+```java
+public void setUrl(String url)
+```
+
+Sets the video URL. The projector will broadcast video from this URL.
+
+<ParamField path="url" type="String">
+  The video URL
+</ParamField>
+</Accordion>
+
+<Accordion title="canBeEditedBy()">
+```java
+public boolean canBeEditedBy(Player player)
+```
+
+Checks if a player has permission to edit this signal projector.
+
+<ParamField path="player" type="Player">
+  The player to check
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  `true` if ComputerCraft is installed or player has operator permissions
+</ResponseField>
+</Accordion>
+
+<Accordion title="getBroadcastVideo()">
+```java
+public @Nullable IVideoSource getBroadcastVideo()
+```
+
+Gets the video source for broadcasting.
+
+<ResponseField name="return" type="IVideoSource">
+  The video source based on the configured URL
+</ResponseField>
+</Accordion>
+
+### Usage Example
+
+```java
+// Get a signal projector block entity
+if (level.getBlockEntity(pos) instanceof SignalProjectorBlockEntity projector) {
+    // Check if player can edit
+    if (projector.canBeEditedBy(player)) {
+        // Set a video URL
+        projector.setUrl("https://example.com/broadcast.mp4");
+        projector.setChanged();
+        
+        // Update clients
+        level.sendBlockUpdated(
+            pos, 
+            level.getBlockState(pos), 
+            level.getBlockState(pos), 
+            3
+        );
+    }
+    
+    // Get the broadcast UUID for linking with hollow cassettes
+    UUID broadcastId = projector.getUUID();
+    System.out.println("Link this projector using ID: " + broadcastId);
+    
+    // Get current URL
+    String url = projector.getUrl();
+    if (!url.isEmpty()) {
+        System.out.println("Broadcasting from: " + url);
+    }
+}
+```
+
+---
+
+## Supporting Interfaces
+
+### IBroadcastSource
+
+**Package:** `net.mehvahdjukaar.vista.common.cassette`
+
+Interface for block entities that can broadcast video feeds.
+
+```java
+public interface IBroadcastSource {
+    UUID getUUID();
+    @Nullable IVideoSource getBroadcastVideo();
+    
+    default void ensureLinked(Level level, IBroadcastLocation location);
+    default void removeLink(Level level);
+}
+```
+
+<Accordion title="Interface Methods">
+**`getUUID()`** - Returns the unique identifier for this broadcast source
+
+**`getBroadcastVideo()`** - Returns the video source being broadcast, or null
+
+**`ensureLinked()`** - Registers this broadcast source with the BroadcastManager
+
+**`removeLink()`** - Unregisters this broadcast source
+</Accordion>
+
+### ViewFinderAccess
+
+**Package:** `net.mehvahdjukaar.vista.common.view_finder`
+
+Interface for accessing and controlling view finder position and rotation.
+
+```java
+public interface ViewFinderAccess {
+    ViewFinderBlockEntity getInternalTile();
+    Vec3 getGlobalPosition(float partialTicks);
+    Vec3 getGlobalFacing(float partialTicks);
+    float getViewFinderGlobalYawOffset(float partialTicks);
+    void setGlobalFacing(Vec3 direction);
+    boolean stillValid(Player player);
+    void updateClients();
+    Restraint getPitchAndYawRestrains();
+    
+    record Restraint(float minYaw, float maxYaw, float minPitch, float maxPitch) {}
+}
+```
+
+<Accordion title="Static Factory Methods">
+```java
+static ViewFinderAccess block(ViewFinderBlockEntity tile)
+```
+Creates a ViewFinderAccess for a block-based view finder.
+
+```java
+static ViewFinderAccess find(Level level, TileOrEntityTarget target)
+```
+Finds and creates the appropriate ViewFinderAccess for a target.
+</Accordion>
